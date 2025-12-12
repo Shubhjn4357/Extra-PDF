@@ -42,11 +42,42 @@ export const pdfToImages = async (file: File): Promise<string[]> => {
     return images;
 };
 
-export const imageToPdf = async (file: File): Promise<Uint8Array> => {
+export const createPdfFromImages = async (files: File[]): Promise<Uint8Array> => {
     const pdfDoc = await PDFDocument.create();
-    const bytes = await file.arrayBuffer();
-    const img = file.type === 'image/jpeg' ? await pdfDoc.embedJpg(bytes) : await pdfDoc.embedPng(bytes);
-    const page = pdfDoc.addPage([img.width, img.height]);
-    page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+
+    for (const file of files) {
+        const buffer = await file.arrayBuffer();
+        let img;
+        try {
+            if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+                img = await pdfDoc.embedJpg(buffer);
+            } else if (file.type === 'image/png') {
+                img = await pdfDoc.embedPng(buffer);
+            } else {
+                continue; 
+            }
+        } catch (e) {
+            console.warn(`Skipping invalid image: ${file.name}`);
+            continue;
+        }
+
+        // Add page matching image dimensions
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, {
+            x: 0,
+            y: 0,
+            width: img.width,
+            height: img.height,
+        });
+    }
+    
+    if (pdfDoc.getPageCount() === 0) {
+        throw new Error("No valid images were found to create PDF.");
+    }
+
     return await pdfDoc.save();
+};
+
+export const imageToPdf = async (file: File): Promise<Uint8Array> => {
+    return createPdfFromImages([file]);
 };

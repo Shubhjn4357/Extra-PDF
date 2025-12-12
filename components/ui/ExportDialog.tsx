@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
 import { X, Download, Lock, FileDown, Sliders } from 'lucide-react';
 
+export interface ExportOptions {
+    password?: string;
+    compression?: number;
+}
+
 interface ExportDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (fileName: string, password?: string) => void;
+  onExport: (fileName: string, options: ExportOptions) => void;
   defaultFileName: string;
 }
 
@@ -49,7 +54,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onE
                 </div>
             </div>
 
-            {/* Compression Slider (Simulated visual for PDF-Lib) */}
+            {/* Compression Slider */}
             <div className="space-y-3">
                 <div className="flex justify-between text-sm">
                     <span className="font-medium text-muted-foreground flex items-center gap-2">
@@ -65,7 +70,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onE
                     onChange={(e) => setCompression(Number(e.target.value))}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                 />
-                <p className="text-[10px] text-muted-foreground">Lower quality reduces file size but may blur images.</p>
+                <p className="text-[10px] text-muted-foreground">Lower quality reduces file size.</p>
             </div>
 
             {/* Encryption Toggle */}
@@ -103,7 +108,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onE
                     Cancel
                 </button>
                 <button 
-                    onClick={() => onExport(fileName + '.pdf', isEncrypted ? password : undefined)}
+                    onClick={() => onExport(fileName + '.pdf', { password: isEncrypted ? password : undefined, compression })}
                     className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
                 >
                     <Download className="w-4 h-4" />

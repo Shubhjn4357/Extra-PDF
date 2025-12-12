@@ -3,7 +3,7 @@ import { EditorMode } from '../../../types';
 import { 
     Download, CheckCircle2, Eraser, 
     Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
-    Wand2
+    Wand2, Sparkles
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -152,7 +152,7 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
                 return (
                     <div className="flex items-center gap-2 px-4 py-1 bg-red-500/10 text-red-600 rounded-full border border-red-200/50 backdrop-blur-sm animate-in slide-in-from-top-2">
                         <Eraser className="w-4 h-4" />
-                        <span className="text-xs font-bold">Click drawn lines to delete</span>
+                        <span className="text-xs font-bold">Click items to delete</span>
                     </div>
                 );
             default:
@@ -175,6 +175,13 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
 
             {/* Right: Actions */}
             <div className="flex items-center gap-3 flex-none justify-end ml-4">
+                <button 
+                    onClick={() => onAction('toggle_ai')}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-primary/10 text-primary rounded-full text-sm font-bold hover:bg-primary/20 transition-all border border-primary/20"
+                >
+                    <Sparkles className="w-4 h-4" />
+                    <span className="hidden sm:inline">Ask AI</span>
+                </button>
                 <button 
                     onClick={onExport}
                     className="flex items-center gap-2 px-5 py-2.5 bg-foreground text-background rounded-full text-sm font-bold shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all"

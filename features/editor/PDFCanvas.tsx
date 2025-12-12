@@ -17,7 +17,6 @@ interface PDFCanvasProps {
   brushSize: number;
   textStyle: any;
   onStampRemove: (pageNum: number) => void;
-  // NEW: Callback when an annotation is selected
   onAnnotationSelect?: (ann: any | null) => void;
 }
 
@@ -55,15 +54,139 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
     setNumPages(numPages);
   };
 
-  const getRelativeCoords = (e: React.MouseEvent | React.TouchEvent, pageElement: HTMLElement) => {
-     const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+  // Helper to get coords relative to a page
+  const getRelativeCoords = (clientX: number, clientY: number, pageElement: HTMLElement) => {
      const rect = pageElement.getBoundingClientRect();
      return {
         x: (clientX - rect.left) / zoom,
         y: (clientY - rect.top) / zoom
      };
   };
+
+  // --- Global Event Listeners for Dragging ---
+  useEffect(() => {
+      const handleGlobalMove = (e: MouseEvent | TouchEvent) => {
+          if (interactionState === 'none') return;
+          
+          // Get client coordinates
+          const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+          const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+
+          // For drawing/rect creation (requires page context)
+          if (interactionState === 'drawing' && dragStart) {
+              const pageEl = document.getElementById(`page-${dragStart.page}-overlay`);
+              if (!pageEl) return;
+              const coords = getRelativeCoords(clientX, clientY, pageEl);
+
+              if (mode === 'draw') {
+                  setCurrentPath(prev => [...prev, { ...coords }]);
+              } else if (mode === 'whiteout' || mode === 'replace') {
+                  const w = coords.x - dragStart.x;
+                  const h = coords.y - dragStart.y;
+                  setCurrentRect({
+                      x: w > 0 ? dragStart.x : coords.x,
+                      y: h > 0 ? dragStart.y : coords.y,
+                      w: Math.abs(w),
+                      h: Math.abs(h),
+                      page: dragStart.page
+                  });
+              }
+          }
+
+          // For moving/resizing existing annotations
+          if ((interactionState === 'dragging' || interactionState === 'resizing') && selectedId && dragStart && initialAnnState) {
+              const pageEl = document.getElementById(`page-${dragStart.page}-overlay`);
+              if (!pageEl) return;
+              const coords = getRelativeCoords(clientX, clientY, pageEl);
+              
+              const dx = coords.x - dragStart.x;
+              const dy = coords.y - dragStart.y;
+
+              if (interactionState === 'dragging') {
+                  updateAnnotation(selectedId, {
+                      ...initialAnnState,
+                      x: initialAnnState.x + dx,
+                      y: initialAnnState.y + dy
+                  });
+              } else if (interactionState === 'resizing') {
+                   // Ensure we have a valid starting width/height even if undefined initially (for text)
+                   const startW = initialAnnState.width || 200;
+                   const startH = initialAnnState.height || 50;
+                   updateAnnotation(selectedId, {
+                      ...initialAnnState,
+                      width: Math.max(20, startW + dx),
+                      height: Math.max(20, startH + dy)
+                  });
+              }
+          }
+      };
+
+      const handleGlobalUp = () => {
+          if (interactionState === 'drawing' && dragStart) {
+            if (mode === 'draw' && currentPath.length > 2) {
+                addAnnotation({
+                    id: Date.now().toString(),
+                    page: dragStart.page,
+                    type: 'drawing',
+                    points: currentPath,
+                    color: drawColor,
+                    thickness: brushSize
+                });
+            } else if ((mode === 'whiteout' || mode === 'replace') && currentRect && currentRect.w > 5) {
+                // Add whiteout background
+                addAnnotation({
+                    id: Date.now().toString() + '_bg',
+                    page: dragStart.page,
+                    type: 'whiteout',
+                    x: currentRect.x,
+                    y: currentRect.y,
+                    width: currentRect.w,
+                    height: currentRect.h
+                });
+
+                // For replace mode, ALSO add a text box on top and focus it
+                if (mode === 'replace') {
+                    const textId = Date.now().toString() + '_txt';
+                    addAnnotation({
+                        id: textId,
+                        page: dragStart.page,
+                        type: 'text',
+                        x: currentRect.x,
+                        // Center text vertically relative to the box (approx)
+                        y: currentRect.y + (currentRect.h / 2) - 10,
+                        text: 'Type replacement...',
+                        color: drawColor,
+                        size: 14,
+                        fontFamily: textStyle.fontFamily
+                    });
+                    setEditingId(textId);
+                    setSelectedId(textId);
+                }
+            }
+          }
+
+          setInteractionState('none');
+          setDragStart(null);
+          setCurrentRect(null);
+          setCurrentPath([]);
+          setInitialAnnState(null);
+      };
+
+      if (interactionState !== 'none') {
+          window.addEventListener('mousemove', handleGlobalMove);
+          window.addEventListener('mouseup', handleGlobalUp);
+          window.addEventListener('touchmove', handleGlobalMove);
+          window.addEventListener('touchend', handleGlobalUp);
+      }
+
+      return () => {
+          window.removeEventListener('mousemove', handleGlobalMove);
+          window.removeEventListener('mouseup', handleGlobalUp);
+          window.removeEventListener('touchmove', handleGlobalMove);
+          window.removeEventListener('touchend', handleGlobalUp);
+      };
+  }, [interactionState, dragStart, selectedId, initialAnnState, currentPath, currentRect, mode, drawColor, brushSize]);
+
 
   const handleTouchStart = (e: React.TouchEvent) => {
       if (e.touches.length === 2) {
@@ -85,16 +208,24 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
           const ratio = dist / initialTouchDist.current;
           const newZoom = Math.min(Math.max(initialZoom.current * ratio, 0.5), 3.0);
           setZoom(newZoom);
-          e.preventDefault(); // Prevent browser zoom
+          e.preventDefault(); 
       }
   };
 
+  // Canvas Mouse Down (Creation)
   const handleMouseDown = (e: React.MouseEvent, pageNum: number) => {
-    if (e.button === 2) return; // Ignore right click for drawing
-    e.stopPropagation();
-    const coords = getRelativeCoords(e, e.currentTarget as HTMLElement);
+    if (e.button === 2) return; 
+
+    const pageEl = document.getElementById(`page-${pageNum}-overlay`);
+    if(!pageEl) return;
+    
+    // Use the element-relative logic
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    const coords = getRelativeCoords(clientX, clientY, pageEl);
 
     if (mode === 'image' && pendingImage) {
+        e.stopPropagation();
         const id = Date.now().toString();
         addAnnotation({
             id,
@@ -113,14 +244,16 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
     }
 
     if (mode === 'text') {
+        e.stopPropagation();
         const id = Date.now().toString();
-        const newAnn = { 
+        // Create text with a visible default so user can find it
+        addAnnotation({ 
             id, 
             page: pageNum, 
             type: 'text', 
             x: coords.x, 
             y: coords.y, 
-            text: '', // Start empty to force typing
+            text: '', // Start empty to force usage of placeholder/typing
             color: drawColor,
             size: textStyle.size || 14,
             fontFamily: textStyle.fontFamily,
@@ -128,13 +261,14 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             isItalic: textStyle.isItalic,
             isUnderline: textStyle.isUnderline,
             align: textStyle.align
-        };
-        addAnnotation(newAnn as any);
-        setEditingId(id); // Immediately edit
+        });
+        setEditingId(id); 
+        setSelectedId(id);
         return;
     }
 
-    if (mode === 'draw' || mode === 'eraser' || mode === 'whiteout' || mode === 'replace') {
+    if (mode === 'draw' || mode === 'whiteout' || mode === 'replace') {
+        e.stopPropagation();
         setInteractionState('drawing');
         setDragStart({ ...coords, page: pageNum });
         if (mode === 'draw') setCurrentPath([{ ...coords }]);
@@ -143,101 +277,62 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
     }
     
     if (mode === 'stamp_remover') {
+        e.stopPropagation();
         onStampRemove(pageNum);
         return;
     }
 
     if (mode === 'cursor') {
+        // If clicking on empty space in cursor mode, deselect
         setSelectedId(null);
+        setEditingId(null);
         if(onAnnotationSelect) onAnnotationSelect(null);
     }
   };
 
+  // Annotation Mouse Down (Selection/Drag)
   const handleAnnotationMouseDown = (e: React.MouseEvent, ann: any, action: 'drag' | 'resize') => {
-      e.stopPropagation();
-      e.preventDefault(); // Critical: Prevent browser native drag
-      if (mode !== 'cursor') return;
+      e.stopPropagation(); 
       
+      if (mode === 'eraser') {
+          removeAnnotation(ann.id);
+          return;
+      }
+
+      if (mode !== 'cursor' && mode !== 'text') return;
+      
+      // In-place text editing logic
+      if (ann.type === 'text') {
+        // Text Tool: Edit immediately
+        if (mode === 'text') {
+            setEditingId(ann.id);
+            setSelectedId(ann.id);
+            if(onAnnotationSelect) onAnnotationSelect(ann);
+            return; 
+        }
+        // Cursor Tool: Select, then Double Click to Edit
+        if (mode === 'cursor' && selectedId === ann.id && editingId !== ann.id) {
+             setEditingId(ann.id);
+             return; 
+        }
+      }
+      
+      // Only prevent default if we are dragging, NOT if we are editing
+      if (editingId !== ann.id) {
+        e.preventDefault(); 
+      }
+
       setSelectedId(ann.id);
-      if(onAnnotationSelect) onAnnotationSelect(ann); // NOTIFY PARENT
+      if(onAnnotationSelect) onAnnotationSelect(ann);
 
       setInteractionState(action === 'drag' ? 'dragging' : 'resizing');
       setInitialAnnState({ ...ann });
-      const pageEl = (e.currentTarget.closest('.page-overlay') as HTMLElement);
-      const coords = getRelativeCoords(e, pageEl);
-      setDragStart({ ...coords, page: ann.page });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent, pageNum: number) => {
-    const coords = getRelativeCoords(e, e.currentTarget as HTMLElement);
-
-    if (interactionState === 'none') return;
-
-    if (interactionState === 'drawing') {
-        if (mode === 'draw') {
-            setCurrentPath(prev => [...prev, { ...coords }]);
-        } else if (mode === 'whiteout' || mode === 'replace') {
-            if (!dragStart) return;
-            const w = coords.x - dragStart.x;
-            const h = coords.y - dragStart.y;
-            setCurrentRect({
-                x: w > 0 ? dragStart.x : coords.x,
-                y: h > 0 ? dragStart.y : coords.y,
-                w: Math.abs(w),
-                h: Math.abs(h),
-                page: pageNum
-            });
-        }
-    } 
-    else if (interactionState === 'dragging' && selectedId && dragStart) {
-        const dx = coords.x - dragStart.x;
-        const dy = coords.y - dragStart.y;
-        updateAnnotation(selectedId, {
-            ...initialAnnState,
-            x: initialAnnState.x + dx,
-            y: initialAnnState.y + dy
-        });
-    }
-    else if (interactionState === 'resizing' && selectedId && dragStart) {
-        const dx = coords.x - dragStart.x;
-        const dy = coords.y - dragStart.y;
-        updateAnnotation(selectedId, {
-            ...initialAnnState,
-            width: Math.max(20, initialAnnState.width + dx),
-            height: Math.max(20, initialAnnState.height + dy)
-        });
-    }
-  };
-
-  const handleMouseUp = (e: React.MouseEvent, pageNum: number) => {
-    if (interactionState === 'drawing') {
-        if (mode === 'draw' && currentPath.length > 2) {
-            addAnnotation({
-                id: Date.now().toString(),
-                page: pageNum,
-                type: 'drawing',
-                points: currentPath,
-                color: drawColor,
-                thickness: brushSize
-            });
-        } else if ((mode === 'whiteout' || mode === 'replace') && currentRect && currentRect.w > 5) {
-             addAnnotation({
-                id: Date.now().toString() + '_bg',
-                page: pageNum,
-                type: 'whiteout',
-                x: currentRect.x,
-                y: currentRect.y,
-                width: currentRect.w,
-                height: currentRect.h
-            });
-        }
-    }
-
-    setInteractionState('none');
-    setDragStart(null);
-    setCurrentRect(null);
-    setCurrentPath([]);
-    setInitialAnnState(null);
+      
+      const pageEl = document.getElementById(`page-${ann.page}-overlay`);
+      if(pageEl) {
+         const coords = getRelativeCoords(e.clientX, e.clientY, pageEl);
+         setDragStart({ ...coords, page: ann.page });
+      }
   };
 
   const getFontFamily = (f: string) => {
@@ -253,14 +348,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   return (
     <div 
         className="flex w-full h-full bg-muted/30 relative overflow-hidden" 
-        onClick={() => {
-            setContextMenu(null);
-            // If clicking background in cursor mode, deselect
-            if (mode === 'cursor') {
-                setSelectedId(null);
-                if(onAnnotationSelect) onAnnotationSelect(null);
-            }
-        }}
+        onClick={() => setContextMenu(null)}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
     >
@@ -278,7 +366,6 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
       </div>
 
       <div className="flex-1 overflow-auto p-4 md:p-8 relative h-full">
-        {/* Changed items-center to mx-auto on children for mobile responsiveness */}
         <Document file={file} onLoadSuccess={onDocumentLoadSuccess} className="flex flex-col gap-8 pb-20 w-full">
            {Array.from(new Array(numPages), (_, index) => {
                const pageNum = index + 1;
@@ -288,13 +375,11 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                 <div 
                     key={`page-${pageNum}`} 
                     id={`page-${pageNum}`} 
-                    // Added mx-auto here to center if space exists, but align left if overflows (mobile behavior)
                     className="relative shadow-2xl rounded-lg overflow-hidden group/page bg-white mx-auto" 
                     style={{ width: 'fit-content' }}
                     onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        // Fixed: id is set to null instead of a function
                         setContextMenu({ x: e.clientX, y: e.clientY, id: null, type: 'canvas' });
                     }}
                 >
@@ -307,7 +392,6 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                             className="bg-white"
                         />
                         
-                        {/* Stamp Remover Overlay Hint */}
                         {mode === 'stamp_remover' && (
                             <div className="absolute inset-0 bg-purple-500/10 z-50 flex items-center justify-center opacity-0 group-hover/page:opacity-100 transition-opacity cursor-pointer pointer-events-none">
                                 <div className="bg-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
@@ -318,16 +402,15 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                         )}
 
                         <div 
+                            id={`page-${pageNum}-overlay`}
                             className="absolute inset-0 z-10 page-overlay"
                             style={{ 
                                 width: '100%', height: '100%',
-                                pointerEvents: (mode === 'cursor' && !selectedId) ? 'none' : 'auto', 
+                                pointerEvents: (mode === 'cursor' || mode === 'eraser') ? 'none' : 'auto', 
                                 cursor: (mode === 'draw') ? 'crosshair' : (mode === 'text' ? 'text' : (mode === 'stamp_remover' ? 'pointer' : 'default'))
                             }}
                             onMouseDown={(e) => handleMouseDown(e, pageNum)}
-                            onMouseMove={(e) => handleMouseMove(e, pageNum)}
-                            onMouseUp={(e) => handleMouseUp(e, pageNum)}
-                            onContextMenu={(e) => e.stopPropagation()} // Let document handle default context menu if not on annotation
+                            onContextMenu={(e) => e.stopPropagation()} 
                         >
                             <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
                                 {annotations.filter(a => a.page === pageNum && a.type === 'drawing').map(a => (
@@ -338,12 +421,16 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                         stroke={(a as any).color}
                                         strokeWidth={(a as any).thickness}
                                         strokeLinecap="round"
-                                        // Make lines selectable in cursor mode
-                                        style={{ pointerEvents: mode === 'cursor' ? 'auto' : 'none' }}
+                                        style={{ pointerEvents: (mode === 'cursor' || mode === 'eraser') ? 'auto' : 'none', cursor: mode === 'eraser' ? 'not-allowed' : 'pointer' }}
                                         onClick={(e) => handleAnnotationMouseDown(e as any, a, 'drag')}
+                                        onMouseEnter={(e) => {
+                                            if (mode === 'eraser' && e.buttons === 1) {
+                                                removeAnnotation(a.id);
+                                            }
+                                        }}
                                     />
                                 ))}
-                                {mode === 'draw' && currentPath.length > 1 && dragStart?.page === pageNum && (
+                                {mode === 'draw' && currentPath.length > 0 && dragStart?.page === pageNum && (
                                     <polyline 
                                         points={currentPath.map(p => `${p.x},${p.y}`).join(' ')}
                                         fill="none"
@@ -361,14 +448,20 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                 return (
                                     <div
                                         key={ann.id}
-                                        className={`absolute group pointer-events-auto transition-shadow ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                                        className={`absolute group transition-shadow ${isSelected ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                                         style={{ 
                                             left: ann.x, top: ann.y, 
                                             width: (ann as any).width, height: (ann as any).height,
-                                            cursor: mode === 'cursor' ? 'move' : 'default',
+                                            pointerEvents: 'auto',
+                                            cursor: (mode === 'eraser') ? 'not-allowed' : (mode === 'cursor' ? 'move' : 'default'),
                                             zIndex: 20
                                         }}
                                         onMouseDown={(e) => handleAnnotationMouseDown(e, ann, 'drag')}
+                                        onMouseEnter={(e) => {
+                                            if (mode === 'eraser' && e.buttons === 1) {
+                                                removeAnnotation(ann.id);
+                                            }
+                                        }}
                                         onContextMenu={(e) => { 
                                             e.preventDefault(); 
                                             e.stopPropagation();
@@ -386,7 +479,14 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
 
                                         {ann.type === 'whiteout' && <div className="w-full h-full bg-white border border-gray-100" />}
                                         
-                                        {ann.type === 'image' && <img src={(ann as any).dataUrl} className="w-full h-full object-contain pointer-events-none" />}
+                                        {ann.type === 'image' && (
+                                            <img 
+                                                src={(ann as any).dataUrl} 
+                                                className="w-full h-full object-contain pointer-events-none" 
+                                                draggable={false}
+                                                alt="placed content"
+                                            />
+                                        )}
 
                                         {ann.type === 'text' && (
                                             editingId === ann.id ? (
@@ -407,18 +507,25 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                                         fontStyle: (ann as any).isItalic ? 'italic' : 'normal',
                                                         textDecoration: (ann as any).isUnderline ? 'underline' : 'none',
                                                         textAlign: (ann as any).align || 'left',
-                                                        minWidth: '200px',
-                                                        minHeight: '1.2em',
+                                                        minWidth: '50px',
+                                                        maxWidth: '400px',
+                                                        minHeight: '1.4em',
                                                         overflow: 'hidden',
                                                         background: 'rgba(255,255,255,0.8)',
-                                                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                                        padding: '4px',
+                                                        border: '1px solid #000',
+                                                        borderRadius: '4px',
+                                                        lineHeight: 'inherit',
+                                                        outline: 'none',
+                                                        resize: 'none',
+                                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
                                                     }}
-                                                    className="border border-primary px-2 py-1 outline-none rounded resize-both"
-                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    className="w-full h-full"
+                                                    onMouseDown={(e) => e.stopPropagation()} 
+                                                    // IMPORTANT: Stop propagation here to prevent parent drag handler from firing
                                                 />
                                             ) : (
                                                 <div 
-                                                    onDoubleClick={() => setEditingId(ann.id)} 
                                                     className={`w-max h-auto whitespace-pre-wrap p-1 border border-transparent ${mode === 'cursor' ? 'hover:border-dashed hover:border-gray-300' : ''}`}
                                                     style={{ 
                                                         color: (ann as any).color, 
@@ -430,7 +537,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                                         textAlign: (ann as any).align || 'left',
                                                     }}
                                                 >
-                                                    {ann.text || <span className="text-gray-400 italic">Empty text</span>}
+                                                    {ann.text || <span className="text-gray-400 italic">Type here...</span>}
                                                 </div>
                                             )
                                         )}
@@ -451,8 +558,8 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
            })}
         </Document>
 
-        {/* Floating Zoom Controls (Bottom-Left) */}
-        <div className="fixed bottom-6 left-20 md:left-56 z-[60] flex items-center bg-background/80 backdrop-blur-md rounded-full p-1 border border-border shadow-lg animate-in slide-in-from-bottom-4">
+        {/* Floating Zoom Controls */}
+        <div className="fixed bottom-6 right-6 md:right-20 z-[60] flex items-center bg-background/80 backdrop-blur-md rounded-full p-1 border border-border shadow-lg animate-in slide-in-from-bottom-4">
             <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))} className="p-2 hover:bg-muted rounded-full transition-all active:scale-95">
                 <ZoomOut className="w-4 h-4 text-foreground" />
             </button>

@@ -27,16 +27,16 @@ const addTextTool: FunctionDeclaration = {
 
 const replaceTextTool: FunctionDeclaration = {
   name: 'edit_pdf_replace_text',
-  description: 'Replace text by covering old text with whiteout and adding new text.',
+  description: 'Replace text by covering old text with whiteout and adding new text on top.',
   parameters: {
     type: Type.OBJECT,
     properties: {
       newText: { type: Type.STRING, description: 'The new text to write.' },
       page: { type: Type.NUMBER, description: 'Page number (1-based index).' },
-      x: { type: Type.NUMBER, description: 'X coordinate.' },
-      y: { type: Type.NUMBER, description: 'Y coordinate.' },
-      width: { type: Type.NUMBER, description: 'Width of the area to cover/erase.' },
-      height: { type: Type.NUMBER, description: 'Height of the area.' },
+      x: { type: Type.NUMBER, description: 'X coordinate of the area.' },
+      y: { type: Type.NUMBER, description: 'Y coordinate of the area.' },
+      width: { type: Type.NUMBER, description: 'Width of the area to cover.' },
+      height: { type: Type.NUMBER, description: 'Height of the area to cover.' },
     },
     required: ['newText', 'x', 'y', 'width', 'height', 'page'],
   },
@@ -62,21 +62,32 @@ export const createChatSession = (): Chat => {
             systemInstruction: `You are ExtraPDF Assistant, an expert AI document editor.
             
             Key Capabilities:
-            1. **Analyze & Suggest**: When asked for suggestions, analyze the text context (provided in prompt) and suggest grammar fixes, clarity improvements, or professional tone shifts.
-            2. **Edit PDF**: You can call tools to Add Text, Replace Text, or Clean Stamps.
+            1. **Analyze & Suggest**: When asked for suggestions, analyze the text context and suggest grammar fixes, clarity improvements, or professional tone shifts.
+            2. **Edit PDF**: You can call tools to Add Text, Replace Text, or Clean Stamps. 
+               - When replacing text, provide the exact coordinates of the text to be replaced (x,y,width,height) and the new text string.
             3. **Formatting**: If the user asks for bold/italic text, mention that they should select the text in the editor toolbar, as you primarily handle content generation.
             
             Coordinate System:
             - PDF A4: 595 x 842 points. Origin Top-Left.
             
             Rules:
-            - Provide FULL and COMPREHENSIVE responses. Do not cut off lists.
+            - Provide FULL and COMPREHENSIVE responses.
             - If asked to "remove stamp", call the 'clean_page_image' tool.
             - When suggesting edits, show "Original: ..." and "Suggestion: ...".
             `,
             tools: [{ functionDeclarations: [addTextTool, replaceTextTool, cleanStampTool] }],
         },
     });
+};
+
+export const prepareDocumentPrompt = (pdfText: string, userQuery: string): string => {
+    // Gemini 1.5 Flash has a large context window (1M tokens).
+    // We safeguard loosely at 100k characters to prevent browser UI freezing during string ops, 
+    // while still passing comprehensive document context.
+    const MAX_CONTEXT = 100000; 
+    const context = pdfText.length > MAX_CONTEXT ? pdfText.substring(0, MAX_CONTEXT) + "\n...(truncated)..." : pdfText;
+    
+    return `Document Content:\n${context}\n\nUser Query: ${userQuery}`;
 };
 
 export const streamResponse = async (
@@ -122,25 +133,7 @@ export const streamResponse = async (
 
 export const removeStampFromImage = async (base64Image: string): Promise<string> => {
     const ai = getClient();
-    // Use Pro model for vision tasks
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image', 
-        contents: [
-            {
-                inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] }
-            },
-            {
-                text: "Return a cleaned version of this document image with any red/blue stamps or watermarks removed. Maintain the original text exactly. Return ONLY the base64 of the cleaned image."
-            }
-        ],
-    });
-    // NOTE: Gemini Text-to-Text models cannot generate images directly in this specific API call format without Imagen.
-    // However, for this architecture simulation, we will assume an advanced text-in/image-out or we mock it.
-    // ACTUAL IMPLEMENTATION NOTE: Realistically, we would use a specialized model or masking. 
-    // Since we can't do image-out here easily, we will simulate success or use a heuristic.
-    
     // Fallback/Simulated: In a real app, this would call Imagen or a dedicated cleanup API.
-    // For now, we return the original to prevent app crash, but log the "AI Action".
     console.log("AI Stamp Removal Requested (Simulation)");
     return base64Image; 
 };

@@ -97,11 +97,12 @@
         border-radius: 8px;
       }
       
-      /* Make text layer visible but transparent for interaction */
+      /* Make text layer visible and selectable */
       .react-pdf__Page__textContent {
-        user-select: none;
+        user-select: text !important;
         opacity: 0.8; /* Slight visibility to show it exists */
         mix-blend-mode: multiply;
+        cursor: text;
       }
       .react-pdf__Page__textContent span {
         color: transparent;
@@ -109,6 +110,7 @@
       }
       .react-pdf__Page__textContent span::selection {
         background: rgba(255, 0, 0, 0.2);
+        color: transparent;
       }
       
       .react-pdf__Page__annotations {

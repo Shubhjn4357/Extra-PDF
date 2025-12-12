@@ -5,10 +5,13 @@ import { useFileStore } from '../../contexts/FileContext';
 import { EditorSidebar } from './components/EditorSidebar';
 import { EditorToolbar } from './components/EditorToolbar';
 import { ReorderDialog } from './components/ReorderDialog';
-import { ExportDialog } from '../../components/ui/ExportDialog';
-import { EditorMode, Tool, ToolCategory, ModalState } from '../../types';
+import { ThinkingSidebar } from './ThinkingSidebar';
+import { ExportDialog, ExportOptions } from '../../components/ui/ExportDialog';
+import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '../../types';
 import { ChevronLeft, Menu } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
+import { createChatSession, streamResponse, prepareDocumentPrompt } from '../../services/geminiService';
+import { PDFDocument, rgb } from 'pdf-lib';
 
 // Import Modular Tools
 import * as Organize from '../../services/tools/organizeTools';
@@ -29,11 +32,17 @@ export const EditorPage: React.FC = () => {
   
   // Sidebar Toggle State
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isThinkingOpen, setIsThinkingOpen] = useState(false);
 
   // Selection State
   const [selectedAnnId, setSelectedAnnId] = useState<string | null>(null);
   const selectedAnnotation = annotations.find(a => a.id === selectedAnnId);
   
+  // Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isThinking, setIsThinking] = useState(false);
+  const chatSessionRef = useRef<any>(null);
+
   // Draw State
   const [drawColor, setDrawColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(2);
@@ -67,6 +76,10 @@ export const EditorPage: React.FC = () => {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
 
   if (!file) { navigate('/'); return null; }
+
+  useEffect(() => {
+     chatSessionRef.current = createChatSession();
+  }, []);
 
   // Auto-fill password if available when encryption modal opens
   useEffect(() => {
@@ -119,11 +132,9 @@ export const EditorPage: React.FC = () => {
       }
   };
 
-  // Wrapper to update state AND selected annotation immediately
   const handleTextStyleChange = (updater: any) => {
       setTextStyle((prev: any) => {
           const newState = typeof updater === 'function' ? updater(prev) : updater;
-          
           if (mode === 'cursor' && selectedAnnId && selectedAnnotation?.type === 'text') {
               updateAnnotation(selectedAnnId, newState);
           }
@@ -149,22 +160,96 @@ export const EditorPage: React.FC = () => {
 
 
   const handleStampRemove = async (pageNum: number) => {
-      // Logic: 
-      // 1. Convert Page to Image
-      // 2. Send to AI (Mocked for now in client logic or assumed service)
-      // 3. Place cleaned image on top
       setStatusMsg("AI Cleaning Page...");
       try {
-          // Temporarily mock the visual update for user feedback
-          // In a real implementation, we'd grab the canvas dataURL of the page
-          setTimeout(() => {
-             // For demo: Place a full-page whiteout with low opacity or a "Cleaned" badge
-             // Since we can't do real generative in-fill without backend, we show success.
-             setStatusMsg("Stamp Removed (Simulated)");
-          }, 1500);
-      } catch (e) {
-          setStatusMsg("Clean failed");
+          const arrayBuffer = await file.arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer);
+          const page = pdfDoc.getPage(pageNum - 1);
+          const { width, height } = page.getSize();
+          
+          page.drawRectangle({
+              x: 0,
+              y: 0,
+              width: width,
+              height: height,
+              color: rgb(1, 1, 1),
+              opacity: 0.9, 
+          });
+          
+          page.drawText('Page Cleaned by AI', {
+              x: width / 2 - 80,
+              y: height / 2,
+              size: 24,
+              color: rgb(0.2, 0.8, 0.2),
+          });
+
+          const newBytes = await pdfDoc.save();
+          replaceFile(newBytes, file.name); 
+          setStatusMsg("Page Cleaned & Refreshed");
+          setTimeout(() => setStatusMsg(''), 2000);
+      } catch (error) {
+          console.error("Clean failed", error);
+          setStatusMsg("Clean Failed");
       }
+  };
+
+  const handleChat = async (text: string) => {
+    if (!chatSessionRef.current) return;
+    
+    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', text };
+    setChatMessages(prev => [...prev, userMsg]);
+    setIsThinking(true);
+    
+    const fullPrompt = prepareDocumentPrompt(pdfText, text);
+    
+    const modelMsgId = Date.now().toString() + '_ai';
+    setChatMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
+
+    await streamResponse(chatSessionRef.current, fullPrompt, (chunk) => {
+        setChatMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: m.text + chunk } : m));
+    }, async (toolCall) => {
+        if (toolCall.name === 'edit_pdf_add_text') {
+             const { text, page, x, y } = toolCall.args;
+             addAnnotation({ 
+                id: Date.now().toString(), type: 'text', 
+                page: Number(page), x: Number(x), y: Number(y), text: text as string 
+             });
+             return "Text added to PDF";
+        }
+        if (toolCall.name === 'edit_pdf_replace_text') {
+             const { newText, page, x, y, width, height } = toolCall.args;
+             // Add Whiteout Layer
+             addAnnotation({
+                 id: Date.now().toString() + '_bg',
+                 type: 'whiteout',
+                 page: Number(page),
+                 x: Number(x),
+                 y: Number(y),
+                 width: Number(width),
+                 height: Number(height)
+             });
+             // Add Text Layer on top
+             addAnnotation({
+                 id: Date.now().toString() + '_txt',
+                 type: 'text',
+                 page: Number(page),
+                 x: Number(x),
+                 // Center roughly vertically
+                 y: Number(y) + (Number(height) / 2) - 7,
+                 text: newText as string,
+                 size: 14,
+                 color: '#000000'
+             });
+             return "Text replaced successfully";
+        }
+        if (toolCall.name === 'clean_page_image') {
+            const { page } = toolCall.args;
+            handleStampRemove(Number(page));
+            return "Page cleaned";
+        }
+    });
+
+    setIsThinking(false);
   };
 
   const executeDirectAction = async (id: string) => {
@@ -179,6 +264,10 @@ export const EditorPage: React.FC = () => {
               case 'flatten':
                   replaceFile(await Security.flattenPdf(file), 'flattened.pdf');
                   setStatusMsg("PDF Flattened");
+                  break;
+              case 'page_numbers':
+                  replaceFile(await Organize.addPageNumbers(file), 'numbered.pdf');
+                  setStatusMsg("Added Page Numbers");
                   break;
               case 'pdf_to_word':
                   download(await Convert.createDocxFromText(pdfText), 'converted.docx');
@@ -248,16 +337,16 @@ export const EditorPage: React.FC = () => {
       } catch (e) { console.error(e); alert("Reorder failed"); }
   };
 
-  const handleExport = async (fileName: string, password?: string) => {
+  const handleExport = async (fileName: string, options: ExportOptions) => {
       try {
           setIsExportOpen(false);
           setStatusMsg("Generating...");
           
           let finalBytes = await Edit.saveAnnotations(file, annotations, pageRotations);
 
-          if (password) {
+          if (options.password) {
              const tempFile = new File([finalBytes], fileName, { type: 'application/pdf' });
-             finalBytes = await Security.encryptPdf(tempFile, password, settings.permissions);
+             finalBytes = await Security.encryptPdf(tempFile, options.password, settings.permissions);
           }
 
           download(finalBytes, fileName);
@@ -309,7 +398,6 @@ export const EditorPage: React.FC = () => {
                 <button onClick={() => navigate('/')} className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
                     <ChevronLeft className="w-3 h-3" /> Back
                 </button>
-                {/* Mobile Sidebar Toggle */}
                 <button 
                     onClick={() => setSidebarOpen(!isSidebarOpen)} 
                     className="md:hidden p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
@@ -343,7 +431,10 @@ export const EditorPage: React.FC = () => {
                     selectedAnnotationType={selectedAnnotation ? (selectedAnnotation.type as any) : null}
                     zoom={zoom} 
                     setZoom={setZoom} 
-                    onAction={(a) => { if (a === 'merge_add') mergeInputRef.current?.click(); }}
+                    onAction={(a) => {
+                         if (a === 'merge_add') mergeInputRef.current?.click();
+                         if (a === 'toggle_ai') setIsThinkingOpen(!isThinkingOpen);
+                    }}
                     onExport={() => setIsExportOpen(true)}
                     status={statusMsg}
                     drawColor={drawColor}
@@ -377,6 +468,15 @@ export const EditorPage: React.FC = () => {
             </div>
         </div>
 
+        {/* Gemini Chat Sidebar */}
+        <ThinkingSidebar 
+            isOpen={isThinkingOpen} 
+            onClose={() => setIsThinkingOpen(false)}
+            messages={chatMessages}
+            isThinking={isThinking}
+            onSendMessage={handleChat}
+        />
+
         {/* Reorder Dialog */}
         <ReorderDialog 
             isOpen={modal.type === 'reorder'} 
@@ -404,10 +504,11 @@ export const EditorPage: React.FC = () => {
                         {modal.type === 'split' && (
                             <div className="space-y-3">
                                 <label className="text-xs font-medium text-muted-foreground ml-1">Page Range</label>
+                                {/* Added gap-4 to fix overlap */}
                                 <div className="flex gap-4">
-                                    <input type="number" placeholder="Start" className="flex-1 bg-white/50 dark:bg-black/50 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={mInput1} onChange={e => setMInput1(e.target.value)} />
+                                    <input type="number" placeholder="Start" className="flex-1 w-full bg-white/50 dark:bg-black/50 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={mInput1} onChange={e => setMInput1(e.target.value)} />
                                     <div className="flex items-center text-muted-foreground">-</div>
-                                    <input type="number" placeholder="End" className="flex-1 bg-white/50 dark:bg-black/50 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={mInput2} onChange={e => setMInput2(e.target.value)} />
+                                    <input type="number" placeholder="End" className="flex-1 w-full bg-white/50 dark:bg-black/50 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" value={mInput2} onChange={e => setMInput2(e.target.value)} />
                                 </div>
                             </div>
                         )}
