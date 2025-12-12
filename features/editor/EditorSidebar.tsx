@@ -6,7 +6,7 @@ import {
     Image as ImageIcon, AlignLeft, Info, FileStack,
     Hash, FileOutput, Wand2
 } from 'lucide-react';
-import { useSettings } from '../../../contexts/SettingsContext';
+import { useSettingsStore } from '../../../store/useSettingsStore';
 
 interface SidebarProps {
     activeCategory: ToolCategory;
@@ -45,7 +45,7 @@ export const toolsList: Tool[] = [
 ];
 
 export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiveCategory, activeToolId, onToolSelect }) => {
-  const { settings } = useSettings();
+  const { settings } = useSettingsStore();
   const categories: ToolCategory[] = ['edit', 'organize', 'security', 'convert'];
   const isCompact = settings.density === 'compact';
 

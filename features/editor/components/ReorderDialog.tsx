@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, GripVertical } from 'lucide-react';
 import { Document, Page } from 'react-pdf';
-import { useFileStore } from '../../../contexts/FileContext';
+import { useFileStore } from '../../../store/useFileStore';
 
 interface ReorderDialogProps {
   isOpen: boolean;

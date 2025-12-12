@@ -3,6 +3,20 @@ import { Annotation } from '../../types';
 
 const load = async (file: File) => await PDFDocument.load(await file.arrayBuffer());
 
+export const cropPage = async (file: File, pageIndex: number, rect: { x: number, y: number, w: number, h: number }): Promise<Uint8Array> => {
+    const pdfDoc = await load(file);
+    const page = pdfDoc.getPage(pageIndex);
+    const { height } = page.getSize();
+    
+    // Convert UI Coords (Top-Left Origin) to PDF Coords (Bottom-Left Origin)
+    // Also, UI might be zoomed, but the rect passed here should be in unzoomed PDF points
+    
+    page.setCropBox(rect.x, height - rect.y - rect.h, rect.w, rect.h);
+    page.setMediaBox(rect.x, height - rect.y - rect.h, rect.w, rect.h);
+    
+    return await pdfDoc.save();
+};
+
 export const saveAnnotations = async (
     file: File, 
     annotations: Annotation[], 
@@ -23,7 +37,6 @@ export const saveAnnotations = async (
   const timesBoldItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic);
 
   const courier = await pdfDoc.embedFont(StandardFonts.Courier);
-  // Add other courier variants if needed
 
   const getFont = (family: string | undefined, bold: boolean | undefined, italic: boolean | undefined) => {
       if (family === 'Times') {
@@ -70,7 +83,6 @@ export const saveAnnotations = async (
            color: rgb(r, g, b) 
         });
         
-        // Basic Underline Implementation
         if (ann.isUnderline) {
             const width = fontToUse.widthOfTextAtSize(ann.text, ann.size || 14);
             page.drawLine({
@@ -81,14 +93,18 @@ export const saveAnnotations = async (
             });
         }
 
-    } else if (ann.type === 'whiteout') {
-       page.drawRectangle({ x: ann.x, y: height - ann.y - ann.height, width: ann.width, height: ann.height, color: rgb(1,1,1) });
+    } else if (ann.type === 'whiteout' || ann.type === 'redact') {
+       // Redact uses black, Whiteout uses white
+       const color = ann.type === 'redact' ? rgb(0,0,0) : rgb(1,1,1);
+       page.drawRectangle({ x: ann.x, y: height - ann.y - ann.height, width: ann.width, height: ann.height, color });
+    
     } else if (ann.type === 'image') {
        const img = ann.dataUrl.startsWith('data:image/png') 
          ? await pdfDoc.embedPng(ann.dataUrl) 
          : await pdfDoc.embedJpg(ann.dataUrl);
        page.drawImage(img, { x: ann.x, y: height - ann.y - ann.height, width: ann.width, height: ann.height });
-    } else if (ann.type === 'drawing') {
+    
+    } else if (ann.type === 'drawing' || ann.type === 'signature') {
         const p = ann.points;
         const r = parseInt(ann.color?.slice(1, 3) || '00', 16) / 255;
         const g = parseInt(ann.color?.slice(3, 5) || '00', 16) / 255;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Moon, Sun, Type, FileCog, Shield, Lock } from 'lucide-react';
-import { useSettings } from '../../contexts/SettingsContext';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -10,7 +10,7 @@ interface SettingsDialogProps {
 type SettingsTab = 'general' | 'appearance' | 'security';
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   if (!isOpen) return null;

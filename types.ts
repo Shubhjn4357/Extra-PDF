@@ -1,6 +1,9 @@
 import { LucideIcon } from 'lucide-react';
 
-export type EditorMode = 'cursor' | 'text' | 'whiteout' | 'replace' | 'draw' | 'image' | 'watermark' | 'eraser' | 'stamp_remover';
+export type EditorMode = 
+  | 'cursor' | 'text' | 'whiteout' | 'replace' | 'draw' 
+  | 'image' | 'watermark' | 'eraser' | 'stamp_remover'
+  | 'crop' | 'redact' | 'sign';
 
 export type ToolCategory = 'organize' | 'edit' | 'security' | 'convert';
 
@@ -43,6 +46,9 @@ export interface TextAnnotation {
   type: 'text';
   color?: string;
   size?: number;
+  // Box dimensions
+  width?: number;
+  height?: number;
   // New Typography Props
   fontFamily?: 'Helvetica' | 'Times' | 'Courier';
   isBold?: boolean;
@@ -58,7 +64,7 @@ export interface WhiteoutAnnotation {
   y: number;
   width: number;
   height: number;
-  type: 'whiteout';
+  type: 'whiteout' | 'redact';
 }
 
 export interface ImageAnnotation {
@@ -78,13 +84,13 @@ export interface DrawingPath {
   points: { x: number; y: number }[];
   color: string;
   thickness: number;
-  type: 'drawing';
+  type: 'drawing' | 'signature';
 }
 
 export type Annotation = TextAnnotation | WhiteoutAnnotation | ImageAnnotation | DrawingPath;
 
 export interface ModalState {
-  type: 'split' | 'encrypt' | 'merge' | 'watermark' | 'metadata' | 'reorder' | 'delete_page' | null;
+  type: 'split' | 'encrypt' | 'merge' | 'watermark' | 'metadata' | 'reorder' | 'delete_page' | 'html_to_pdf' | null;
   isOpen: boolean;
 }
 
