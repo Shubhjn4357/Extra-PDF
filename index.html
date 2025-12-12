@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ExtraPDF - AI Powered Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+      // CRITICAL: Polyfill process.env immediately before any other scripts
+      window.process = window.process || { env: { API_KEY: '' } };
+    </script>
+    <style>
+      :root {
+        /* OKLCH Color Space approximation for Tailwind */
+        --background: 0 0% 100%; /* White */
+        --foreground: 0 0% 10%; /* Black */
+        
+        /* Bright Red */
+        --primary: 0 84% 60%; 
+        --primary-foreground: 0 0% 100%;
+        
+        --muted: 0 0% 96%;
+        --muted-foreground: 0 0% 40%;
+        
+        --border: 0 0% 90%;
+        --input: 0 0% 90%;
+        
+        --radius: 1.5rem; /* Curved corners */
+      }
+
+      .dark {
+        /* Charcoal */
+        --background: 240 10% 10%; 
+        --foreground: 0 0% 95%; /* Off-white */
+        
+        /* Deep Red */
+        --primary: 0 72% 51%; 
+        --primary-foreground: 0 0% 100%;
+        
+        --muted: 240 6% 15%;
+        --muted-foreground: 240 5% 65%;
+        
+        --border: 240 6% 20%;
+        --input: 240 6% 20%;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        /* Dynamic Mesh Gradient Background */
+        background-color: hsl(var(--background));
+        background-image: 
+          radial-gradient(at 0% 0%, hsla(0, 91%, 71%, 0.15) 0px, transparent 50%),
+          radial-gradient(at 100% 0%, hsla(26, 90%, 68%, 0.15) 0px, transparent 50%),
+          radial-gradient(at 100% 100%, hsla(0, 89%, 70%, 0.15) 0px, transparent 50%),
+          radial-gradient(at 0% 100%, hsla(28, 93%, 66%, 0.15) 0px, transparent 50%);
+        background-attachment: fixed;
+        background-size: cover;
+        color: hsl(var(--foreground));
+        transition: background-color 0.3s ease, color 0.3s ease;
+        overflow-x: hidden;
+      }
+
+      .dark body {
+         background-image: 
+          radial-gradient(at 0% 0%, hsla(0, 91%, 30%, 0.3) 0px, transparent 50%),
+          radial-gradient(at 100% 0%, hsla(240, 20%, 20%, 0.5) 0px, transparent 50%),
+          radial-gradient(at 50% 100%, hsla(0, 91%, 20%, 0.3) 0px, transparent 50%);
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: hsla(var(--foreground) / 0.2);
+        border-radius: 999px;
+        backdrop-filter: blur(4px);
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: hsla(var(--primary) / 0.8);
+      }
+      
+      /* React PDF Layer Fixes */
+      .react-pdf__Page__canvas {
+        margin: 0 auto;
+        box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        border-radius: 8px;
+      }
+      
+      /* Make text layer visible but transparent for interaction */
+      .react-pdf__Page__textContent {
+        user-select: none;
+        opacity: 0.8; /* Slight visibility to show it exists */
+        mix-blend-mode: multiply;
+      }
+      .react-pdf__Page__textContent span {
+        color: transparent;
+        cursor: text;
+      }
+      .react-pdf__Page__textContent span::selection {
+        background: rgba(255, 0, 0, 0.2);
+      }
+      
+      .react-pdf__Page__annotations {
+        display: none !important;
+      }
+    </style>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              border: "hsl(var(--border))",
+              input: "hsl(var(--input))",
+              background: "hsl(var(--background))",
+              foreground: "hsl(var(--foreground))",
+              primary: {
+                DEFAULT: "hsl(var(--primary))",
+                foreground: "hsl(var(--primary-foreground))",
+              },
+              muted: {
+                DEFAULT: "hsl(var(--muted))",
+                foreground: "hsl(var(--muted-foreground))",
+              },
+            },
+            borderRadius: {
+              lg: "var(--radius)",
+              md: "calc(var(--radius) - 2px)",
+              sm: "calc(var(--radius) - 4px)",
+              '3xl': "1.5rem",
+            },
+            animation: {
+                'in': 'fade-in 0.3s ease-out',
+                'out': 'fade-out 0.2s ease-in',
+            },
+            keyframes: {
+                'fade-in': {
+                    '0%': { opacity: '0', transform: 'scale(0.98)' },
+                    '100%': { opacity: '1', transform: 'scale(1)' },
+                },
+                'fade-out': {
+                    '0%': { opacity: '1', transform: 'scale(1)' },
+                    '100%': { opacity: '0', transform: 'scale(0.98)' },
+                }
+            }
+          },
+        },
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?deps=react@18.2.0",
+    "@google/genai": "https://esm.sh/@google/genai",
+    "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?deps=react@18.2.0,react-dom@18.2.0",
+    "react-pdf": "https://esm.sh/react-pdf@7.7.1?deps=react@18.2.0,react-dom@18.2.0",
+    "pdfjs-dist": "https://esm.sh/pdfjs-dist@3.11.174",
+    "pdfjs-dist/": "https://esm.sh/pdfjs-dist@3.11.174/",
+    "pdf-lib": "https://esm.sh/pdf-lib@1.17.1",
+    "docx": "https://esm.sh/docx@8.5.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
