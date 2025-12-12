@@ -7,7 +7,7 @@ interface ContextMenuProps {
   onClose: () => void;
   onDelete: () => void;
   onEdit?: () => void;
-  type: 'text' | 'whiteout' | 'canvas';
+  type: 'text' | 'whiteout' | 'canvas' | 'image';
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, onDelete, onEdit, type }) => {
@@ -38,7 +38,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, onDelet
       style={style}
     >
       <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider border-b border-white/10 bg-black/5 dark:bg-white/5">
-        {type === 'text' ? 'Text Option' : type === 'whiteout' ? 'Eraser Option' : 'Canvas'}
+        {type === 'text' ? 'Text Option' : type === 'whiteout' ? 'Eraser Option' : type === 'image' ? 'Image Option' : 'Canvas'}
       </div>
       
       {type === 'text' && onEdit && (
@@ -51,7 +51,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, onDelet
         </button>
       )}
 
-      {(type === 'text' || type === 'whiteout') && (
+      {(type === 'text' || type === 'whiteout' || type === 'image') && (
         <button 
           onClick={() => { onDelete(); onClose(); }}
           className="w-full text-left px-4 py-2.5 text-sm hover:bg-red-500/10 text-red-600 flex items-center gap-2 transition-colors"

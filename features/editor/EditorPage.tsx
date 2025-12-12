@@ -7,7 +7,7 @@ import { EditorToolbar } from './components/EditorToolbar';
 import { ReorderDialog } from './components/ReorderDialog';
 import { ExportDialog } from '../../components/ui/ExportDialog';
 import { EditorMode, Tool, ToolCategory, ModalState } from '../../types';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Menu } from 'lucide-react';
 import { useSettings } from '../../contexts/SettingsContext';
 
 // Import Modular Tools
@@ -18,7 +18,7 @@ import * as Convert from '../../services/tools/convertTools';
 
 export const EditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { file, replaceFile, annotations, addAnnotation, pageRotations, rotatePage, pdfText, numPages } = useFileStore();
+  const { file, replaceFile, annotations, addAnnotation, updateAnnotation, pageRotations, rotatePage, pdfText, numPages } = useFileStore();
   const { settings } = useSettings();
   
   // State
@@ -26,6 +26,13 @@ export const EditorPage: React.FC = () => {
   const [mode, setMode] = useState<EditorMode>('cursor');
   const [activeCategory, setActiveCategory] = useState<ToolCategory>('edit');
   const [statusMsg, setStatusMsg] = useState('');
+  
+  // Sidebar Toggle State
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+
+  // Selection State
+  const [selectedAnnId, setSelectedAnnId] = useState<string | null>(null);
+  const selectedAnnotation = annotations.find(a => a.id === selectedAnnId);
   
   // Draw State
   const [drawColor, setDrawColor] = useState('#000000');
@@ -76,6 +83,8 @@ export const EditorPage: React.FC = () => {
     // 1. Interactive Modes
     if (['cursor', 'text', 'draw', 'whiteout', 'eraser', 'stamp_remover'].includes(tool.id)) {
         setMode(tool.id as EditorMode);
+        // Deselect when switching tools
+        if (tool.id !== 'cursor') setSelectedAnnId(null);
         return;
     }
 
@@ -89,6 +98,55 @@ export const EditorPage: React.FC = () => {
     // 3. Direct Actions
     executeDirectAction(tool.id);
   };
+
+  const handleAnnotationSelect = (ann: any | null) => {
+      setSelectedAnnId(ann ? ann.id : null);
+      if (ann) {
+          if (ann.type === 'text') {
+              setTextStyle({
+                  fontFamily: ann.fontFamily || 'Helvetica',
+                  isBold: !!ann.isBold,
+                  isItalic: !!ann.isItalic,
+                  isUnderline: !!ann.isUnderline,
+                  align: ann.align || 'left',
+                  size: ann.size || 14
+              });
+              setDrawColor(ann.color || '#000000');
+          } else if (ann.type === 'drawing') {
+              setDrawColor(ann.color || '#000000');
+              setBrushSize(ann.thickness || 2);
+          }
+      }
+  };
+
+  // Wrapper to update state AND selected annotation immediately
+  const handleTextStyleChange = (updater: any) => {
+      setTextStyle((prev: any) => {
+          const newState = typeof updater === 'function' ? updater(prev) : updater;
+          
+          if (mode === 'cursor' && selectedAnnId && selectedAnnotation?.type === 'text') {
+              updateAnnotation(selectedAnnId, newState);
+          }
+          return newState;
+      });
+  };
+
+  const handleColorChange = (color: string) => {
+      setDrawColor(color);
+      if (mode === 'cursor' && selectedAnnId) {
+           updateAnnotation(selectedAnnId, { color });
+      }
+  };
+
+  const handleBrushSizeChange = (size: number) => {
+      setBrushSize(size);
+      if (mode === 'cursor' && selectedAnnId && selectedAnnotation?.type === 'drawing') {
+          updateAnnotation(selectedAnnId, { thickness: size });
+      } else if (mode === 'cursor' && selectedAnnId && selectedAnnotation?.type === 'text') {
+          updateAnnotation(selectedAnnId, { size });
+      }
+  };
+
 
   const handleStampRemove = async (pageNum: number) => {
       // Logic: 
@@ -247,37 +305,53 @@ export const EditorPage: React.FC = () => {
 
         {/* Top Navigation */}
         <div className="h-10 bg-white/60 dark:bg-black/60 backdrop-blur-xl border-b border-white/20 flex items-center px-4 justify-between shrink-0">
-            <button onClick={() => navigate('/')} className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-                <ChevronLeft className="w-3 h-3" /> Back
-            </button>
-            <span className="text-xs font-bold opacity-50">{file.name}</span>
+            <div className="flex items-center gap-3">
+                <button onClick={() => navigate('/')} className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                    <ChevronLeft className="w-3 h-3" /> Back
+                </button>
+                {/* Mobile Sidebar Toggle */}
+                <button 
+                    onClick={() => setSidebarOpen(!isSidebarOpen)} 
+                    className="md:hidden p-1.5 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
+                >
+                    <Menu className="w-4 h-4 text-foreground" />
+                </button>
+            </div>
+            
+            <span className="text-xs font-bold opacity-50 truncate max-w-[150px]">{file.name}</span>
             <div className="w-10" /> 
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-            {/* Smooth Sidebar */}
-            <EditorSidebar 
-                activeCategory={activeCategory} 
-                setActiveCategory={setActiveCategory}
-                activeToolId={mode}
-                onToolSelect={handleToolSelect}
-            />
+            {/* Smooth Collapsible Sidebar Container */}
+            <div className={`
+                transition-all duration-300 ease-in-out bg-background border-r border-border overflow-hidden
+                ${isSidebarOpen ? 'w-16 md:w-20 opacity-100' : 'w-0 opacity-0'}
+            `}>
+                <EditorSidebar 
+                    activeCategory={activeCategory} 
+                    setActiveCategory={setActiveCategory}
+                    activeToolId={mode}
+                    onToolSelect={handleToolSelect}
+                />
+            </div>
 
             <div className="flex-1 flex flex-col relative min-w-0">
                 {/* Dynamic Toolbar */}
                 <EditorToolbar 
                     mode={mode} 
+                    selectedAnnotationType={selectedAnnotation ? (selectedAnnotation.type as any) : null}
                     zoom={zoom} 
                     setZoom={setZoom} 
                     onAction={(a) => { if (a === 'merge_add') mergeInputRef.current?.click(); }}
                     onExport={() => setIsExportOpen(true)}
                     status={statusMsg}
                     drawColor={drawColor}
-                    setDrawColor={setDrawColor}
+                    setDrawColor={handleColorChange}
                     brushSize={brushSize}
-                    setBrushSize={setBrushSize}
+                    setBrushSize={handleBrushSizeChange}
                     textStyle={textStyle}
-                    setTextStyle={setTextStyle}
+                    setTextStyle={handleTextStyleChange}
                 />
 
                 {/* Canvas Area */}
@@ -289,6 +363,7 @@ export const EditorPage: React.FC = () => {
                      )}
                      <PDFCanvas 
                         zoom={zoom} 
+                        setZoom={setZoom}
                         mode={mode} 
                         pendingImage={pendingImage}
                         onImagePlaced={() => { setMode('cursor'); setPendingImage(null); }}
@@ -296,6 +371,7 @@ export const EditorPage: React.FC = () => {
                         brushSize={brushSize}
                         textStyle={textStyle}
                         onStampRemove={handleStampRemove}
+                        onAnnotationSelect={handleAnnotationSelect}
                      />
                 </div>
             </div>

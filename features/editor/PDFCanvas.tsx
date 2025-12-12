@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useFileStore } from '../../contexts/FileContext';
 import { EditorMode } from '../../types';
 import { ContextMenu } from './ContextMenu';
-import { Maximize2, Wand2 } from 'lucide-react';
+import { Maximize2, Wand2, ZoomIn, ZoomOut } from 'lucide-react';
 
-// Worker is initialized in FileContext.tsx, removing redundant assignment here.
+// Worker is initialized in FileContext.tsx
 
 interface PDFCanvasProps {
   zoom: number;
+  setZoom: (z: number) => void;
   mode: EditorMode;
   pendingImage: string | null;
   onImagePlaced: () => void;
@@ -16,11 +17,13 @@ interface PDFCanvasProps {
   brushSize: number;
   textStyle: any;
   onStampRemove: (pageNum: number) => void;
+  // NEW: Callback when an annotation is selected
+  onAnnotationSelect?: (ann: any | null) => void;
 }
 
 export const PDFCanvas: React.FC<PDFCanvasProps> = ({ 
-    zoom, mode, pendingImage, onImagePlaced, 
-    drawColor, brushSize, textStyle, onStampRemove 
+    zoom, setZoom, mode, pendingImage, onImagePlaced, 
+    drawColor, brushSize, textStyle, onStampRemove, onAnnotationSelect
 }) => {
   const { 
       file, annotations, addAnnotation, updateAnnotation, removeAnnotation, 
@@ -34,6 +37,10 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   const [interactionState, setInteractionState] = useState<'none' | 'drawing' | 'dragging' | 'resizing' | 'placing'>('none');
   const [dragStart, setDragStart] = useState<{x: number, y: number, page: number} | null>(null);
   const [initialAnnState, setInitialAnnState] = useState<any>(null);
+  
+  // Pinch Zoom State
+  const initialTouchDist = useRef<number>(0);
+  const initialZoom = useRef<number>(1);
   
   // Rect Selection
   const [currentRect, setCurrentRect] = useState<{x: number, y: number, w: number, h: number, page: number} | null>(null);
@@ -58,13 +65,39 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
      };
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+      if (e.touches.length === 2) {
+          const dist = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+          );
+          initialTouchDist.current = dist;
+          initialZoom.current = zoom;
+      }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+      if (e.touches.length === 2 && initialTouchDist.current > 0) {
+          const dist = Math.hypot(
+              e.touches[0].clientX - e.touches[1].clientX,
+              e.touches[0].clientY - e.touches[1].clientY
+          );
+          const ratio = dist / initialTouchDist.current;
+          const newZoom = Math.min(Math.max(initialZoom.current * ratio, 0.5), 3.0);
+          setZoom(newZoom);
+          e.preventDefault(); // Prevent browser zoom
+      }
+  };
+
   const handleMouseDown = (e: React.MouseEvent, pageNum: number) => {
+    if (e.button === 2) return; // Ignore right click for drawing
     e.stopPropagation();
     const coords = getRelativeCoords(e, e.currentTarget as HTMLElement);
 
     if (mode === 'image' && pendingImage) {
+        const id = Date.now().toString();
         addAnnotation({
-            id: Date.now().toString(),
+            id,
             page: pageNum,
             type: 'image',
             x: coords.x - 50,
@@ -74,18 +107,20 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             dataUrl: pendingImage
         });
         onImagePlaced();
+        setSelectedId(id);
+        if(onAnnotationSelect) onAnnotationSelect({ id, type: 'image' });
         return;
     }
 
     if (mode === 'text') {
         const id = Date.now().toString();
-        addAnnotation({ 
+        const newAnn = { 
             id, 
             page: pageNum, 
             type: 'text', 
             x: coords.x, 
             y: coords.y, 
-            text: 'Type here...',
+            text: '', // Start empty to force typing
             color: drawColor,
             size: textStyle.size || 14,
             fontFamily: textStyle.fontFamily,
@@ -93,7 +128,8 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             isItalic: textStyle.isItalic,
             isUnderline: textStyle.isUnderline,
             align: textStyle.align
-        });
+        };
+        addAnnotation(newAnn as any);
         setEditingId(id); // Immediately edit
         return;
     }
@@ -107,20 +143,24 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
     }
     
     if (mode === 'stamp_remover') {
-        // Trigger logic in parent
         onStampRemove(pageNum);
         return;
     }
 
     if (mode === 'cursor') {
         setSelectedId(null);
+        if(onAnnotationSelect) onAnnotationSelect(null);
     }
   };
 
   const handleAnnotationMouseDown = (e: React.MouseEvent, ann: any, action: 'drag' | 'resize') => {
       e.stopPropagation();
+      e.preventDefault(); // Critical: Prevent browser native drag
       if (mode !== 'cursor') return;
+      
       setSelectedId(ann.id);
+      if(onAnnotationSelect) onAnnotationSelect(ann); // NOTIFY PARENT
+
       setInteractionState(action === 'drag' ? 'dragging' : 'resizing');
       setInitialAnnState({ ...ann });
       const pageEl = (e.currentTarget.closest('.page-overlay') as HTMLElement);
@@ -211,7 +251,19 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   if (!file) return <div className="p-10 text-center text-muted-foreground">Loading file...</div>;
 
   return (
-    <div className="flex w-full h-full bg-muted/30 relative" onClick={() => setContextMenu(null)}>
+    <div 
+        className="flex w-full h-full bg-muted/30 relative overflow-hidden" 
+        onClick={() => {
+            setContextMenu(null);
+            // If clicking background in cursor mode, deselect
+            if (mode === 'cursor') {
+                setSelectedId(null);
+                if(onAnnotationSelect) onAnnotationSelect(null);
+            }
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+    >
       <div className="hidden md:flex flex-col w-48 border-r border-border bg-background overflow-y-auto p-4 gap-4 shrink-0 h-full">
          <Document file={file}>
             {Array.from(new Array(numPages), (_, index) => (
@@ -226,7 +278,8 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
       </div>
 
       <div className="flex-1 overflow-auto p-4 md:p-8 relative h-full">
-        <Document file={file} onLoadSuccess={onDocumentLoadSuccess} className="flex flex-col gap-8 items-center">
+        {/* Changed items-center to mx-auto on children for mobile responsiveness */}
+        <Document file={file} onLoadSuccess={onDocumentLoadSuccess} className="flex flex-col gap-8 pb-20 w-full">
            {Array.from(new Array(numPages), (_, index) => {
                const pageNum = index + 1;
                const rotation = pageRotations[pageNum] || 0;
@@ -235,17 +288,20 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                 <div 
                     key={`page-${pageNum}`} 
                     id={`page-${pageNum}`} 
-                    className="relative shadow-2xl rounded-lg overflow-hidden group/page" 
+                    // Added mx-auto here to center if space exists, but align left if overflows (mobile behavior)
+                    className="relative shadow-2xl rounded-lg overflow-hidden group/page bg-white mx-auto" 
                     style={{ width: 'fit-content' }}
                     onContextMenu={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
+                        // Fixed: id is set to null instead of a function
                         setContextMenu({ x: e.clientX, y: e.clientY, id: null, type: 'canvas' });
                     }}
                 >
-                    <div style={{ transform: `scale(${zoom}) rotate(${rotation}deg)`, transformOrigin: 'center center', transition: 'transform 0.3s' }}>
+                    <div style={{ transform: `scale(${zoom}) rotate(${rotation}deg)`, transformOrigin: 'top center', transition: 'transform 0.1s linear' }}>
                         <Page 
                             pageNumber={pageNum} 
-                            width={595} 
+                            width={595} // A4 Standard
                             renderTextLayer={true} 
                             renderAnnotationLayer={false} 
                             className="bg-white"
@@ -271,6 +327,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                             onMouseDown={(e) => handleMouseDown(e, pageNum)}
                             onMouseMove={(e) => handleMouseMove(e, pageNum)}
                             onMouseUp={(e) => handleMouseUp(e, pageNum)}
+                            onContextMenu={(e) => e.stopPropagation()} // Let document handle default context menu if not on annotation
                         >
                             <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
                                 {annotations.filter(a => a.page === pageNum && a.type === 'drawing').map(a => (
@@ -281,7 +338,9 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                         stroke={(a as any).color}
                                         strokeWidth={(a as any).thickness}
                                         strokeLinecap="round"
-                                        style={{ pointerEvents: 'auto' }}
+                                        // Make lines selectable in cursor mode
+                                        style={{ pointerEvents: mode === 'cursor' ? 'auto' : 'none' }}
+                                        onClick={(e) => handleAnnotationMouseDown(e as any, a, 'drag')}
                                     />
                                 ))}
                                 {mode === 'draw' && currentPath.length > 1 && dragStart?.page === pageNum && (
@@ -335,7 +394,11 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                                     autoFocus
                                                     value={ann.text}
                                                     onChange={(e) => updateAnnotation(ann.id, { ...ann, text: e.target.value })}
-                                                    onBlur={() => setEditingId(null)}
+                                                    onBlur={() => {
+                                                        if (!ann.text.trim()) removeAnnotation(ann.id);
+                                                        setEditingId(null);
+                                                    }}
+                                                    placeholder="Type here..."
                                                     style={{ 
                                                         color: (ann as any).color, 
                                                         fontSize: (ann as any).size + 'px',
@@ -344,15 +407,19 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                                         fontStyle: (ann as any).isItalic ? 'italic' : 'normal',
                                                         textDecoration: (ann as any).isUnderline ? 'underline' : 'none',
                                                         textAlign: (ann as any).align || 'left',
-                                                        minWidth: '150px'
+                                                        minWidth: '200px',
+                                                        minHeight: '1.2em',
+                                                        overflow: 'hidden',
+                                                        background: 'rgba(255,255,255,0.8)',
+                                                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                                                     }}
-                                                    className="bg-white/90 border border-primary px-1 outline-none shadow-xl rounded resize"
+                                                    className="border border-primary px-2 py-1 outline-none rounded resize-both"
                                                     onMouseDown={(e) => e.stopPropagation()}
                                                 />
                                             ) : (
                                                 <div 
                                                     onDoubleClick={() => setEditingId(ann.id)} 
-                                                    className="w-max h-auto whitespace-pre-wrap p-1 border border-transparent hover:border-dashed hover:border-gray-300"
+                                                    className={`w-max h-auto whitespace-pre-wrap p-1 border border-transparent ${mode === 'cursor' ? 'hover:border-dashed hover:border-gray-300' : ''}`}
                                                     style={{ 
                                                         color: (ann as any).color, 
                                                         fontSize: (ann as any).size + 'px',
@@ -363,7 +430,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                                         textAlign: (ann as any).align || 'left',
                                                     }}
                                                 >
-                                                    {ann.text || "Type here..."}
+                                                    {ann.text || <span className="text-gray-400 italic">Empty text</span>}
                                                 </div>
                                             )
                                         )}
@@ -383,6 +450,18 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                );
            })}
         </Document>
+
+        {/* Floating Zoom Controls (Bottom-Left) */}
+        <div className="fixed bottom-6 left-20 md:left-56 z-[60] flex items-center bg-background/80 backdrop-blur-md rounded-full p-1 border border-border shadow-lg animate-in slide-in-from-bottom-4">
+            <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))} className="p-2 hover:bg-muted rounded-full transition-all active:scale-95">
+                <ZoomOut className="w-4 h-4 text-foreground" />
+            </button>
+            <span className="w-12 text-center text-xs font-bold text-foreground">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => setZoom(Math.min(2.5, zoom + 0.1))} className="p-2 hover:bg-muted rounded-full transition-all active:scale-95">
+                <ZoomIn className="w-4 h-4 text-foreground" />
+            </button>
+        </div>
+
         {contextMenu && (
             <ContextMenu 
                 x={contextMenu.x} y={contextMenu.y} type={contextMenu.type} 

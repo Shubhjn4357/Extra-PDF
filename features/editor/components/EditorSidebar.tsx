@@ -4,7 +4,7 @@ import {
     MousePointer, Type, Eraser, PenLine, Scissors, Merge, 
     Shield, RotateCw, FileImage, Layers, Trash, Stamp, 
     Image as ImageIcon, AlignLeft, Info, FileStack,
-    Hash, FileOutput
+    Hash, FileOutput, Wand2
 } from 'lucide-react';
 import { useSettings } from '../../../contexts/SettingsContext';
 
@@ -32,6 +32,7 @@ export const toolsList: Tool[] = [
     { id: 'whiteout', label: 'Whiteout', icon: AlignLeft, category: 'edit', description: 'Cover Text' },
     { id: 'add_image', label: 'Image', icon: ImageIcon, category: 'edit', description: 'Add Image' },
     { id: 'watermark', label: 'Stamp', icon: Stamp, category: 'edit', description: 'Watermark', requiresModal: true },
+    { id: 'stamp_remover', label: 'Clean AI', icon: Wand2, category: 'edit', description: 'Remove Stamp' },
 
     // SECURITY
     { id: 'encrypt', label: 'Encrypt', icon: Shield, category: 'security', description: 'Password', requiresModal: true },
@@ -50,19 +51,19 @@ export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiv
 
   return (
     <div className={`
-        w-20 flex flex-col items-center shrink-0 z-20 shadow-xl transition-all border-r
+        w-16 md:w-20 flex flex-col items-center shrink-0 z-20 shadow-xl transition-all border-r
         bg-white/60 dark:bg-black/60 backdrop-blur-xl border-white/20
         ${isCompact ? 'py-2 gap-3' : 'py-4 gap-6'}
     `}>
         {/* Categories */}
-        <div className={`flex flex-col w-full px-2 ${isCompact ? 'gap-1' : 'gap-3'}`}>
+        <div className={`flex flex-col w-full px-1 md:px-2 ${isCompact ? 'gap-1' : 'gap-3'}`}>
             {categories.map(cat => (
                 <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
                     className={`
                         rounded-2xl flex items-center justify-center transition-all duration-300 mx-auto
-                        ${isCompact ? 'w-10 h-10' : 'w-12 h-12'}
+                        ${isCompact ? 'w-10 h-10' : 'w-10 h-10 md:w-12 md:h-12'}
                         ${activeCategory === cat 
                             ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25 scale-105' 
                             : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 hover:scale-105'
@@ -81,7 +82,7 @@ export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiv
         <div className="w-10 h-px bg-white/20 my-2" />
 
         {/* Tools in Category */}
-        <div className={`flex-1 w-full flex flex-col overflow-y-auto px-2 no-scrollbar ${isCompact ? 'gap-1' : 'gap-2'}`}>
+        <div className={`flex-1 w-full flex flex-col overflow-y-auto px-1 md:px-2 no-scrollbar ${isCompact ? 'gap-1' : 'gap-2'}`}>
             {toolsList.filter(t => t.category === activeCategory).map(tool => (
                 <button
                     key={tool.id}
