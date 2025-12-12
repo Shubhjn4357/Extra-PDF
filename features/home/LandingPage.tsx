@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { AIInput } from '../../components/ui/AIInput';
 import { useFileStore } from '../../store/useFileStore';
 import { SettingsDialog } from '../../components/ui/SettingsDialog';
-import { FileText, Settings, UploadCloud, Images, Sparkles } from 'lucide-react';
+import { FileText, Settings, Upload, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import * as Convert from '../../services/tools/convertTools';
 
@@ -101,7 +101,7 @@ export const LandingPage: React.FC = () => {
         >
             {isProcessing ? (
                 <div className="flex flex-col items-center gap-3 animate-pulse text-primary">
-                    <Images className="w-12 h-12" />
+                    <ImageIcon className="w-12 h-12" />
                     <span className="font-bold text-lg">Crunching pixels... 🍪</span>
                 </div>
             ) : (
@@ -110,7 +110,7 @@ export const LandingPage: React.FC = () => {
                         p-6 rounded-full shadow-lg transition-transform duration-500
                         ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-white text-foreground group-hover:scale-110'}
                     `}>
-                        <UploadCloud className="w-8 h-8" />
+                        <Upload className="w-8 h-8" />
                     </div>
                     <div className="text-center">
                         <p className="font-bold text-lg">Drop PDF or Images</p>

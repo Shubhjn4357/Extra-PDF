@@ -102,9 +102,10 @@
       /* Make text layer visible and selectable */
       .react-pdf__Page__textContent {
         user-select: text !important;
-        opacity: 0.8; /* Slight visibility to show it exists */
+        opacity: 1; /* Make visible for editing interaction */
         mix-blend-mode: multiply;
         cursor: text;
+        z-index: 5; /* Ensure it's clickable */
       }
       .react-pdf__Page__textContent span {
         color: transparent;
@@ -115,6 +116,12 @@
         color: transparent;
       }
       
+      /* Allow clicking through overlay when in cursor mode, but catch events in edit mode */
+      .mode-edit .react-pdf__Page__textContent span {
+          cursor: text !important;
+          pointer-events: auto !important;
+      }
+
       .react-pdf__Page__annotations {
         display: none !important;
       }
