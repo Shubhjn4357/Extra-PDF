@@ -15,7 +15,7 @@
     "@google/genai": "latest",
     "react-router-dom": "6.22.3",
     "react-pdf": "7.7.1",
-    "pdfjs-dist": "3.11.174",
+    "pdfjs-dist": "4.2.67",
     "pdf-lib": "1.17.1",
     "docx": "8.5.0",
     "zustand": "^5.0.9",
