@@ -212,6 +212,13 @@ export const EditorPage: React.FC = () => {
       setStatusMsg("AI: Detecting stamps... 🤖");
       try {
           const imgBase64 = await Convert.getPageImage(file, pageNum);
+          
+          // Get Image Dimensions for aspect ratio correction
+          const img = new Image();
+          img.src = imgBase64;
+          await img.decode();
+          const aspectRatio = img.height / img.width;
+
           const boxes = await detectStamps(imgBase64);
           
           if (boxes.length === 0) {
@@ -219,10 +226,10 @@ export const EditorPage: React.FC = () => {
               return;
           }
 
-          // Convert normalized boxes to PDF coordinates
-          // Assuming standard A4/Viewer width consistency (595pt width)
+          // PDFCanvas uses a fixed width of 595px.
+          // We must map the normalized detection box to this fixed-width viewport.
           const pageW = 595;
-          const pageH = 842; 
+          const pageH = pageW * aspectRatio; 
           
           boxes.forEach((box: any) => {
                addAnnotation({
@@ -236,7 +243,7 @@ export const EditorPage: React.FC = () => {
                });
           });
           
-          setStatusMsg(`AI: Covered ${boxes.length} stamps 🛡️`);
+          setStatusMsg(`AI: Removed ${boxes.length} stamps 🛡️`);
           setMode('cursor');
           
       } catch (e) {

@@ -141,7 +141,15 @@ export const detectStamps = async (base64Image: string): Promise<Array<{x: numbe
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] } },
-                    { text: `Identify the bounding boxes of any red stamps, circular seals, logos, or watermarks in this document image that are distinct from the main text. 
+                    { text: `Analyze this document page image.
+                             Identify the bounding boxes of any stamps, seals, logos, or large watermarks that are visually distinct from the main body text.
+                             
+                             CRITICAL RULES:
+                             1. The bounding box must be as TIGHT as possible around the stamp/logo.
+                             2. Do NOT include surrounding text or lines in the box. 
+                             3. If the stamp overlaps text, try to restrict the box to the dense part of the stamp to minimize text loss, OR if it's a transparency, ignore it if removal would ruin text.
+                             4. Focus on RED, BLUE, or INK stamps/seals.
+                             
                              Return a JSON array of objects with keys: ymin, xmin, ymax, xmax.
                              Coordinates should be normalized 0-1000 (0 is top/left, 1000 is bottom/right).
                              If none found, return empty array [].

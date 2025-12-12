@@ -110,7 +110,7 @@ export const LandingPage: React.FC = () => {
                         p-6 rounded-full shadow-lg transition-transform duration-500
                         ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-white text-foreground group-hover:scale-110'}
                     `}>
-                        <Upload className="w-8 h-8" />
+                        <Upload className="w-8 h-8 text-foreground" />
                     </div>
                     <div className="text-center">
                         <p className="font-bold text-lg">Drop PDF or Images</p>
