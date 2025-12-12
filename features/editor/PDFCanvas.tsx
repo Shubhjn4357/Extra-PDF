@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page } from 'react-pdf';
-import { useFileStore } from '../../../store/useFileStore';
-import { EditorMode } from '../../../types';
+import { useFileStore } from '../../store/useFileStore';
+import { EditorMode } from '../../types';
 import { ContextMenu } from './ContextMenu';
 import { Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
 

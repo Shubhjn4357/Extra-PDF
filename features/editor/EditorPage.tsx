@@ -1,28 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PDFCanvas } from './PDFCanvas';
-import { useFileStore } from '../../../store/useFileStore';
-import { useSettingsStore } from '../../../store/useSettingsStore';
+import { useFileStore } from '../../store/useFileStore';
+import { useSettingsStore } from '../../store/useSettingsStore';
 import { EditorSidebar } from './components/EditorSidebar';
 import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EditorToolbar } from './components/EditorToolbar';
 import { ReorderDialog } from './components/ReorderDialog';
 import { ThinkingSidebar } from './ThinkingSidebar';
-import { ExportDialog, ExportOptions } from '../../../components/ui/ExportDialog';
-import { SettingsDialog } from '../../../components/ui/SettingsDialog';
-import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '../../../types';
+import { ExportDialog, ExportOptions } from '../../components/ui/ExportDialog';
+import { SettingsDialog } from '../../components/ui/SettingsDialog';
+import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '../../types';
 import { ChevronLeft, Menu, Settings2, Scissors, Code, PanelLeftClose, PanelLeftOpen, Stamp, Lock, FileText, Type } from 'lucide-react';
-import { createChatSession } from '../../../services/geminiService';
+import { createChatSession, detectStamps } from '../../services/geminiService';
 
 // Import Modular Tools
-import * as Organize from '../../../services/tools/organizeTools';
-import * as Edit from '../../../services/tools/editTools';
-import * as Security from '../../../services/tools/securityTools';
-import * as Convert from '../../../services/tools/convertTools';
+import * as Organize from '../../services/tools/organizeTools';
+import * as Edit from '../../services/tools/editTools';
+import * as Security from '../../services/tools/securityTools';
+import * as Convert from '../../services/tools/convertTools';
 
 export const EditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { file, replaceFile, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation } = useFileStore();
+  const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation } = useFileStore();
   const { settings } = useSettingsStore();
   
   // View State
@@ -197,13 +197,51 @@ export const EditorPage: React.FC = () => {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleStampRemove = (pageNum: number) => {
+  const handleStampRemove = async (pageNum: number) => {
+      if (!file) return;
+
+      // 1. Try removing client-side images first (User added images)
       const stamps = annotations.filter(a => a.page === pageNum && a.type === 'image');
       if (stamps.length > 0) {
           stamps.forEach(s => removeAnnotation(s.id));
           setStatusMsg("Removed Image/Stamp 🧹");
-      } else {
-          setStatusMsg("AI: No stamps detected to remove.");
+          return;
+      }
+
+      // 2. AI Fallback to detect embedded stamps
+      setStatusMsg("AI: Detecting stamps... 🤖");
+      try {
+          const imgBase64 = await Convert.getPageImage(file, pageNum);
+          const boxes = await detectStamps(imgBase64);
+          
+          if (boxes.length === 0) {
+              setStatusMsg("AI: No stamps found.");
+              return;
+          }
+
+          // Convert normalized boxes to PDF coordinates
+          // Assuming standard A4/Viewer width consistency (595pt width)
+          const pageW = 595;
+          const pageH = 842; 
+          
+          boxes.forEach((box: any) => {
+               addAnnotation({
+                   id: Date.now().toString() + Math.random(),
+                   page: pageNum,
+                   type: 'whiteout',
+                   x: box.x * pageW,
+                   y: box.y * pageH,
+                   width: box.width * pageW,
+                   height: box.height * pageH
+               });
+          });
+          
+          setStatusMsg(`AI: Covered ${boxes.length} stamps 🛡️`);
+          setMode('cursor');
+          
+      } catch (e) {
+          console.error(e);
+          setStatusMsg("AI Error: Could not detect.");
       }
   };
 

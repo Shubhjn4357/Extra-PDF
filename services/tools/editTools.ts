@@ -9,8 +9,6 @@ export const cropPage = async (file: File, pageIndex: number, rect: { x: number,
     const { height } = page.getSize();
     
     // Convert UI Coords (Top-Left Origin) to PDF Coords (Bottom-Left Origin)
-    // Also, UI might be zoomed, but the rect passed here should be in unzoomed PDF points
-    
     page.setCropBox(rect.x, height - rect.y - rect.h, rect.w, rect.h);
     page.setMediaBox(rect.x, height - rect.y - rect.h, rect.w, rect.h);
     
@@ -77,7 +75,7 @@ export const saveAnnotations = async (
 
         page.drawText(ann.text, { 
            x: ann.x, 
-           y: height - ann.y - (ann.size || 14), // Adjust Y to align top-left logic
+           y: height - ann.y - (ann.size || 14), 
            size: ann.size || 14, 
            font: fontToUse, 
            color: rgb(r, g, b) 
@@ -94,7 +92,6 @@ export const saveAnnotations = async (
         }
 
     } else if (ann.type === 'whiteout' || ann.type === 'redact') {
-       // Redact uses black, Whiteout uses white
        const color = ann.type === 'redact' ? rgb(0,0,0) : rgb(1,1,1);
        page.drawRectangle({ x: ann.x, y: height - ann.y - ann.height, width: ann.width, height: ann.height, color });
     
@@ -127,23 +124,39 @@ export const addWatermark = async (file: File, text: string, colorHex: string = 
     const pdfDoc = await load(file);
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     
-    // Parse hex color
     const r = parseInt(colorHex.slice(1, 3), 16) / 255;
     const g = parseInt(colorHex.slice(3, 5), 16) / 255;
     const b = parseInt(colorHex.slice(5, 7), 16) / 255;
 
     pdfDoc.getPages().forEach(page => {
         const { width, height } = page.getSize();
-        const fontSize = 80;
+        const fontSize = 60;
         const textWidth = font.widthOfTextAtSize(text, fontSize);
+        const textHeight = fontSize; // Approx height
+
+        // Calculate position to center the rotated text
+        const angle = 45;
+        const rad = angle * Math.PI / 180;
         
+        // Offset from rotation origin to text visual center
+        const cx = textWidth / 2;
+        const cy = textHeight / 3; // Approximate baseline offset
+
+        // Rotate offset
+        const rcx = cx * Math.cos(rad) - cy * Math.sin(rad);
+        const rcy = cx * Math.sin(rad) + cy * Math.cos(rad);
+
+        // Center on page
+        const x = width / 2 - rcx;
+        const y = height / 2 - rcy;
+
         page.drawText(text, {
-            x: width / 2 - (textWidth / 2) * 0.7, 
-            y: height / 2,
+            x: x, 
+            y: y,
             size: fontSize,
             font: font,
             color: rgb(r, g, b),
-            rotate: degrees(45),
+            rotate: degrees(angle),
             opacity: 0.3,
         });
     });

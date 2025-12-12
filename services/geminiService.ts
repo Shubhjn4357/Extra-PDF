@@ -81,12 +81,8 @@ export const createChatSession = (): Chat => {
 };
 
 export const prepareDocumentPrompt = (pdfText: string, userQuery: string): string => {
-    // Gemini 1.5 Flash has a large context window (1M tokens).
-    // We safeguard loosely at 100k characters to prevent browser UI freezing during string ops, 
-    // while still passing comprehensive document context.
     const MAX_CONTEXT = 100000; 
     const context = pdfText.length > MAX_CONTEXT ? pdfText.substring(0, MAX_CONTEXT) + "\n...(truncated)..." : pdfText;
-    
     return `Document Content:\n${context}\n\nUser Query: ${userQuery}`;
 };
 
@@ -132,8 +128,47 @@ export const streamResponse = async (
 };
 
 export const removeStampFromImage = async (base64Image: string): Promise<string> => {
-    const ai = getClient();
     // Fallback/Simulated: In a real app, this would call Imagen or a dedicated cleanup API.
     console.log("AI Stamp Removal Requested (Simulation)");
     return base64Image; 
+};
+
+export const detectStamps = async (base64Image: string): Promise<Array<{x: number, y: number, width: number, height: number}>> => {
+    const ai = getClient();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] } },
+                    { text: `Identify the bounding boxes of any red stamps, circular seals, logos, or watermarks in this document image that are distinct from the main text. 
+                             Return a JSON array of objects with keys: ymin, xmin, ymax, xmax.
+                             Coordinates should be normalized 0-1000 (0 is top/left, 1000 is bottom/right).
+                             If none found, return empty array [].
+                             Do not include markdown formatting, just raw JSON.
+                             Example: [{"ymin": 100, "xmin": 200, "ymax": 300, "xmax": 400}]` }
+                ]
+            },
+            config: {
+                responseMimeType: 'application/json'
+            }
+        });
+        
+        const text = response.text || "[]";
+        // Parse JSON
+        const boxes = JSON.parse(text);
+        if (!Array.isArray(boxes)) return [];
+        
+        return boxes.map((b: any) => ({
+             // Convert 1000-based range to 0-1 scale for the caller to scale up
+             x: b.xmin / 1000,
+             y: b.ymin / 1000,
+             width: (b.xmax - b.xmin) / 1000,
+             height: (b.ymax - b.ymin) / 1000
+        }));
+
+    } catch (e) {
+        console.error("Gemini Vision Error:", e);
+        return [];
+    }
 };

@@ -173,6 +173,23 @@ export const ocrPdf = async (file: File): Promise<string> => {
 
 // --- EXISTING IMAGE TOOLS ---
 
+export const getPageImage = async (file: File, pageNumber: number): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument(arrayBuffer).promise;
+    const page = await pdf.getPage(pageNumber);
+    const viewport = page.getViewport({ scale: 1.5 }); // Good balance for AI analysis
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    
+    const context = canvas.getContext('2d');
+    if (context) {
+        await page.render({ canvasContext: context, viewport } as any).promise;
+        return canvas.toDataURL('image/jpeg', 0.8);
+    }
+    throw new Error("Canvas context error");
+}
+
 export const pdfToImages = async (file: File): Promise<string[]> => {
     const arrayBuffer = await file.arrayBuffer();
     // Use the configured library from react-pdf
