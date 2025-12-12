@@ -14,7 +14,7 @@
     "lucide-react": "0.344.0",
     "@google/genai": "latest",
     "react-router-dom": "6.22.3",
-    "react-pdf": "7.7.1",
+    "react-pdf": "7.7.3",
     "pdfjs-dist": "3.11.174",
     "pdf-lib": "1.17.1",
     "docx": "8.5.0",
