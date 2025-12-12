@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Trash2, Edit, X } from 'lucide-react';
+import { Trash2, Pencil, X } from 'lucide-react';
 
 interface ContextMenuProps {
   x: number;
@@ -46,7 +46,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, onClose, onDelet
           onClick={() => { onEdit(); onClose(); }}
           className="w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 transition-colors"
         >
-          <Edit className="w-4 h-4 text-primary" />
+          <Pencil className="w-4 h-4 text-primary" />
           Edit Text
         </button>
       )}

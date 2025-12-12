@@ -61,7 +61,7 @@ export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiv
 
   return (
     <div className={`
-        w-20 flex flex-col items-center shrink-0 z-20 shadow-xl transition-all border-r
+        w-20 h-full flex flex-col items-center shrink-0 z-20 shadow-xl transition-all border-r
         bg-white/60 dark:bg-black/60 backdrop-blur-xl border-white/20
         ${isCompact ? 'py-2 gap-3' : 'py-4 gap-6'}
     `}>
@@ -98,7 +98,7 @@ export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiv
                     key={tool.id}
                     onClick={() => onToolSelect(tool)}
                     className={`
-                        group relative w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-all
+                        group relative w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-all shrink-0
                         ${activeToolId === tool.id 
                             ? 'bg-primary/10 text-primary border border-primary/20 shadow-inner' 
                             : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 hover:text-foreground'

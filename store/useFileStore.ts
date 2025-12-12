@@ -4,7 +4,8 @@ import { pdfjs } from 'react-pdf';
 
 // Initialize worker globally
 if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
+    // Using unpkg for the worker to match the version required by react-pdf v9
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 }
 
 interface FileState {

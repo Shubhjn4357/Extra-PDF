@@ -16,7 +16,7 @@ import { jsPDF } from 'jspdf';
 
 // Ensure worker is configured. Using the instance from react-pdf ensures consistency.
 if (pdfjs.GlobalWorkerOptions) {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 }
 
 // --- PDF TO OFFICE ---

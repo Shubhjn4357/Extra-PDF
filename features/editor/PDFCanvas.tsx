@@ -9,6 +9,8 @@ interface PDFCanvasProps {
   zoom: number;
   setZoom: (z: number) => void;
   mode: EditorMode;
+  activePage?: number;
+  onPageSelect?: (page: number) => void;
   pendingImage: string | null;
   onImagePlaced: () => void;
   drawColor: string;
@@ -20,11 +22,11 @@ interface PDFCanvasProps {
 }
 
 // Sub-component to handle individual page layout and rotation logic
-const SinglePage = ({ 
+const SinglePage = React.memo(({ 
     pageNum, zoom, rotation, mode, file, annotations, 
-    onMouseDown, onAnnotationMouseDown, onAnnotationEnter, onContextMenu,
+    onMouseDown, onAnnotationMouseDown, onAnnotationEnter, onContextMenu, onPageSelect,
     selectedId, editingId, currentRect, currentPath, dragStart, drawColor, brushSize, textStyle, removeAnnotation, updateAnnotation,
-    getFontFamily
+    getFontFamily, isActive
 }: any) => {
     const [dimensions, setDimensions] = useState({ width: 595, height: 842 }); // Default A4 approx
     
@@ -47,7 +49,6 @@ const SinglePage = ({
     };
 
     // Calculate inner content transform
-    // If rotated, we need to center it in the new container
     const innerStyle: React.CSSProperties = {
         width: dimensions.width,
         height: dimensions.height,
@@ -62,18 +63,17 @@ const SinglePage = ({
 
     return (
         <div 
-            id={`page-${pageNum}`}
-            className="relative shadow-xl rounded-sm overflow-hidden group/page bg-white transition-all hover:shadow-2xl mx-auto my-4"
+            id={`page-wrapper-${pageNum}`} // Hook for scrollIntoView
+            className={`relative rounded-sm overflow-hidden group/page bg-white transition-all mx-auto my-4 border-2 
+                ${isActive ? 'border-primary shadow-2xl ring-4 ring-primary/10' : 'border-transparent shadow-xl hover:shadow-2xl'}`}
             style={containerStyle}
+            onMouseDown={() => onPageSelect(pageNum)}
             onContextMenu={(e) => {
                 e.preventDefault(); e.stopPropagation();
                 onContextMenu(e, null, 'canvas');
             }}
         >
-             {/* Scale wrapper */}
              <div style={{ width: '100%', height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
-                 
-                 {/* Rotation wrapper */}
                  <div style={innerStyle}>
                     <Page 
                         pageNumber={pageNum} 
@@ -117,10 +117,16 @@ const SinglePage = ({
                         {/* HTML Layer for Elements */}
                         {annotations.filter((a:any) => a.page === pageNum && a.type !== 'drawing' && a.type !== 'signature').map((ann:any) => {
                             const isSelected = selectedId === ann.id;
+                            // Add pointer-events-auto explicitly so they can be clicked
+                            // Z-index 20 ensures they are above the PDF text layer (z-index 5)
                             return (
                                 <div
                                     key={ann.id}
-                                    className={`absolute group transition-shadow ${isSelected ? 'ring-1 ring-primary ring-offset-1' : ''}`}
+                                    className={`
+                                        absolute group transition-shadow 
+                                        ${isSelected ? 'ring-1 ring-primary ring-offset-1' : ''}
+                                        ${mode === 'cursor' ? 'hover:ring-1 hover:ring-primary/50 cursor-move' : ''}
+                                    `}
                                     style={{ 
                                         left: ann.x, top: ann.y, 
                                         width: (ann as any).width || 200, height: (ann as any).height || 50,
@@ -134,7 +140,6 @@ const SinglePage = ({
                                         onContextMenu(e, ann.id, ann.type);
                                     }}
                                 >
-                                    {/* Resize Handle */}
                                     {isSelected && mode === 'cursor' && (
                                         <div 
                                             className="absolute -bottom-2 -right-2 w-4 h-4 bg-primary rounded-full cursor-se-resize shadow-md z-50 flex items-center justify-center hover:scale-125 transition-transform"
@@ -158,13 +163,13 @@ const SinglePage = ({
                                                 value={ann.text}
                                                 onChange={(e) => updateAnnotation(ann.id, { text: e.target.value })}
                                                 onBlur={() => { if (!ann.text.trim()) removeAnnotation(ann.id); }}
-                                                placeholder="Type..."
+                                                placeholder="Type here..."
                                                 style={{ 
                                                     color: (ann as any).color, fontSize: (ann as any).size + 'px', fontFamily: getFontFamily((ann as any).fontFamily),
                                                     fontWeight: (ann as any).isBold ? 'bold' : 'normal', fontStyle: (ann as any).isItalic ? 'italic' : 'normal',
                                                     textDecoration: (ann as any).isUnderline ? 'underline' : 'none', textAlign: (ann as any).align || 'left',
                                                 }}
-                                                className="w-full h-full bg-white/90 p-2 border border-primary rounded resize-none outline-none shadow-lg pointer-events-auto"
+                                                className="w-full h-full bg-white/90 p-2 border border-primary rounded resize-none outline-none shadow-lg pointer-events-auto text-black"
                                                 onMouseDown={(e) => e.stopPropagation()} 
                                             />
                                         ) : (
@@ -176,7 +181,7 @@ const SinglePage = ({
                                                     textDecoration: (ann as any).isUnderline ? 'underline' : 'none', textAlign: (ann as any).align || 'left',
                                                 }}
                                             >
-                                                {ann.text || <span className="text-gray-400 italic">Empty text...</span>}
+                                                {ann.text || <span className="text-gray-400 italic bg-white/80 px-2 py-1 border border-dashed border-gray-300 rounded shadow-sm block w-full">Type text...</span>}
                                             </div>
                                         )
                                     )}
@@ -202,10 +207,10 @@ const SinglePage = ({
              </div>
         </div>
     );
-};
+});
 
 export const PDFCanvas: React.FC<PDFCanvasProps> = ({ 
-    zoom, setZoom, mode, pendingImage, onImagePlaced, 
+    zoom, setZoom, mode, activePage = 1, onPageSelect, pendingImage, onImagePlaced, 
     drawColor, brushSize, textStyle, onStampRemove, onAnnotationSelect, onCropApply
 }) => {
   const { 
@@ -234,12 +239,6 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
 
   const getRelativeCoords = (clientX: number, clientY: number, pageElement: HTMLElement) => {
      const rect = pageElement.getBoundingClientRect();
-     // We need to account for scale(zoom). The client bounding rect includes zoom.
-     // However, inside the scale transform, coordinate space is 1:1.
-     // The event gives us screen coordinates.
-     // The element is scaled by zoom.
-     
-     // Simplest approach:
      return {
         x: (clientX - rect.left) / zoom,
         y: (clientY - rect.top) / zoom
@@ -365,6 +364,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   }, [interactionState, dragStart, selectedId, initialAnnState, currentPath, currentRect, mode, drawColor, brushSize]);
 
   const handleMouseDown = (e: React.MouseEvent, pageNum: number) => {
+    if(onPageSelect) onPageSelect(pageNum);
     if (e.button === 2) return; 
     
     // Check for Text Layer Click
@@ -418,6 +418,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
 
   const handleAnnotationMouseDown = (e: React.MouseEvent, ann: any, action: 'drag' | 'resize') => {
       e.stopPropagation();
+      if(onPageSelect) onPageSelect(ann.page);
       if (mode === 'eraser') { removeAnnotation(ann.id); return; }
       if (mode !== 'cursor' && mode !== 'text') return;
       
@@ -483,6 +484,8 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                       onMouseDown={handleMouseDown}
                       onAnnotationMouseDown={handleAnnotationMouseDown}
                       onContextMenu={(e: any, id: string | null, type: any) => setContextMenu({ x: e.clientX, y: e.clientY, id, type })}
+                      onPageSelect={onPageSelect || (() => {})}
+                      isActive={pageNum === activePage}
                       selectedId={selectedId}
                       editingId={editingId}
                       currentRect={currentRect}
