@@ -8,15 +8,28 @@ export const encryptPdf = async (
     permissions: { printing: boolean, copying: boolean, modifying: boolean } = { printing: true, copying: false, modifying: false }
 ): Promise<Uint8Array> => {
   const pdfDoc = await load(file);
+  
+  // Construct permissions object explicitly for pdf-lib
+  const permObj: any = {
+      modifying: !!permissions.modifying,
+      copying: !!permissions.copying,
+      annotating: !!permissions.modifying,
+      fillingForms: !!permissions.modifying,
+      contentAccessibility: !!permissions.copying,
+      documentAssembly: !!permissions.modifying,
+  };
+
+  // specific string enum for printing in pdf-lib
+  if (permissions.printing) {
+      permObj.printing = 'highResolution';
+  }
+
   (pdfDoc as any).encrypt({
     userPassword: password,
-    ownerPassword: password,
-    permissions: { 
-        printing: permissions.printing ? 'highResolution' : undefined,
-        modifying: permissions.modifying,
-        copying: permissions.copying 
-    }
+    ownerPassword: password, // pdf-lib requires owner password to set permissions
+    permissions: permObj
   });
+  
   return await pdfDoc.save();
 };
 

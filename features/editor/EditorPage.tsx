@@ -11,8 +11,8 @@ import { ThinkingSidebar } from './ThinkingSidebar';
 import { ExportDialog, ExportOptions } from '../../components/ui/ExportDialog';
 import { SettingsDialog } from '../../components/ui/SettingsDialog';
 import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '../../types';
-import { ChevronLeft, Menu, Settings2, Scissors, Code, PanelLeftClose, PanelLeftOpen, Stamp, Lock, FileText, Type } from 'lucide-react';
-import { createChatSession, detectStamps } from '../../services/geminiService';
+import { ChevronLeft, Menu, Settings2, Scissors, PanelLeftClose, PanelLeftOpen, Stamp, Lock, Sparkles, Loader2, Bot } from 'lucide-react';
+import { createChatSession, detectStamps, streamResponse, prepareDocumentPrompt, removeStampWithMask } from '../../services/geminiService';
 
 // Import Modular Tools
 import * as Organize from '../../services/tools/organizeTools';
@@ -22,7 +22,7 @@ import * as Convert from '../../services/tools/convertTools';
 
 export const EditorPage: React.FC = () => {
   const navigate = useNavigate();
-  const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation } = useFileStore();
+  const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation, editableBlocks } = useFileStore();
   const { settings } = useSettingsStore();
   
   // View State
@@ -30,13 +30,14 @@ export const EditorPage: React.FC = () => {
   const [mode, setMode] = useState<EditorMode>('cursor');
   const [activeCategory, setActiveCategory] = useState<ToolCategory>('edit');
   const [statusMsg, setStatusMsg] = useState('');
-  const [activePage, setActivePage] = useState(1); // Track selected page
+  const [activePage, setActivePage] = useState(1);
   
   // UI State
-  const [isSidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar
-  const [isThumbnailsOpen, setThumbnailsOpen] = useState(true); // Desktop thumbnails
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isThumbnailsOpen, setThumbnailsOpen] = useState(true);
   const [isThinkingOpen, setIsThinkingOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAIProcessing, setIsAIProcessing] = useState(false); // NEW: Global AI Loading State
 
   // Selection State
   const [selectedAnnId, setSelectedAnnId] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export const EditorPage: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const chatSessionRef = useRef<any>(null);
+  const isFirstMsgRef = useRef(true);
 
   // Draw/Text State
   const [drawColor, setDrawColor] = useState('#000000');
@@ -80,12 +82,10 @@ export const EditorPage: React.FC = () => {
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Redirect Effect
   useEffect(() => {
     if (!file) navigate('/');
   }, [file, navigate]);
 
-  // Init
   useEffect(() => {
       const isDesktop = window.innerWidth >= 768;
       if (isDesktop) setSidebarOpen(true);
@@ -100,10 +100,103 @@ export const EditorPage: React.FC = () => {
     }
   }, [modal.type, settings.defaultPassword]);
 
-  /* --- Handlers --- */
+  /* --- Chat & AI Implementation --- */
+
+  const handleChatSendMessage = async (text: string) => {
+      if (!chatSessionRef.current) return;
+      
+      setIsThinking(true);
+      const userMsgId = Date.now().toString();
+      
+      // Optimistic UI update
+      setChatMessages(prev => [...prev, { id: userMsgId, role: 'user', text }]);
+
+      const prompt = prepareDocumentPrompt(pdfText, text, isFirstMsgRef.current);
+      isFirstMsgRef.current = false;
+
+      // Apply AI Thinking Setting
+      const finalPrompt = settings.aiThinking 
+         ? prompt + "\n\n(IMPORTANT: Please Explain your reasoning step-by-step before giving the final answer.)"
+         : prompt + "\n\n(IMPORTANT: Be concise. Do not explain reasoning unless asked.)";
+
+      // Placeholder for model response
+      const modelMsgId = (Date.now() + 1).toString();
+      setChatMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
+
+      await streamResponse(
+          chatSessionRef.current,
+          finalPrompt,
+          (chunk) => {
+              setChatMessages(prev => prev.map(m => 
+                  m.id === modelMsgId ? { ...m, text: m.text + chunk } : m
+              ));
+          },
+          async (toolCall) => {
+              // Intercept tool calls from Gemini
+              return await handleAIToolExecution(toolCall);
+          }
+      );
+
+      setIsThinking(false);
+  };
+
+  const handleAIToolExecution = async (toolCall: any) => {
+      const { name, args } = toolCall;
+      console.log(`[AI Tool] Executing ${name}`, args);
+
+      try {
+        switch (name) {
+            case 'edit_pdf_add_text':
+                addAnnotation({
+                    id: Date.now().toString(),
+                    page: args.page,
+                    type: 'text',
+                    x: args.x || 100,
+                    y: args.y || 100,
+                    text: args.text,
+                    color: args.color || '#000000',
+                    size: args.fontSize || 14
+                });
+                return "Text added successfully.";
+
+            case 'clean_page_image':
+                // Trigger the visual stamp removal process
+                // Default to page center if no interaction? AI auto-detect
+                await handleStampRemove(args.page);
+                return "Stamp removal process completed.";
+
+            case 'organize_rotate_page':
+                rotatePage(args.page);
+                return `Page ${args.page} rotated.`;
+
+            case 'organize_delete_page':
+                if (args.pages && args.pages.length > 0) {
+                    // We need to actually replace the file, which is async
+                    setIsAIProcessing(true);
+                    const newBytes = await Organize.deletePages(file!, args.pages);
+                    replaceFile(newBytes);
+                    setIsAIProcessing(false);
+                    return `Pages ${args.pages.join(', ')} deleted.`;
+                }
+                return "No pages specified.";
+            
+            case 'get_page_count':
+                return `The document has ${numPages} pages.`;
+
+            default:
+                return "Tool not implemented.";
+        }
+      } catch (e) {
+          console.error("AI Tool Execution Error", e);
+          setIsAIProcessing(false);
+          return "Error executing tool.";
+      }
+  };
+
+  /* --- Editor Handlers --- */
 
   const handleToolSelect = (tool: Tool) => {
-    if (['cursor', 'text', 'draw', 'whiteout', 'eraser', 'stamp_remover', 'crop', 'redact', 'sign'].includes(tool.id)) {
+    if (['cursor', 'text', 'edit_text', 'draw', 'whiteout', 'eraser', 'stamp_remover', 'crop', 'redact', 'sign'].includes(tool.id)) {
         setMode(tool.id as EditorMode);
         if (tool.id !== 'cursor') setSelectedAnnId(null);
         if (window.innerWidth < 768) setSidebarOpen(false);
@@ -130,6 +223,16 @@ export const EditorPage: React.FC = () => {
               case 'merge': mergeInputRef.current?.click(); break;
               case 'add_image': imageInputRef.current?.click(); break;
               case 'word_to_pdf': wordInputRef.current?.click(); break;
+              case 'remove_empty':
+                  setStatusMsg("Scanning for blank pages... 🔍");
+                  const { pdfBytes, removedCount } = await Organize.removeEmptyPages(file);
+                  if (pdfBytes && removedCount > 0) {
+                      replaceFile(pdfBytes);
+                      setStatusMsg(`Removed ${removedCount} empty pages 🗑️`);
+                  } else {
+                      setStatusMsg("No empty pages found 🤷");
+                  }
+                  break;
               case 'flatten':
                   replaceFile(await Security.flattenPdf(file), 'flattened.pdf');
                   setStatusMsg("PDF Flattened 📄"); break;
@@ -197,58 +300,94 @@ export const EditorPage: React.FC = () => {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleStampRemove = async (pageNum: number) => {
+  // REAL AI STAMP REMOVAL (INPAINTING)
+  const handleStampRemove = async (pageNum: number, rect?: { x: number, y: number, w: number, h: number }) => {
       if (!file) return;
 
-      // 1. Try removing client-side images first (User added images)
-      const stamps = annotations.filter(a => a.page === pageNum && a.type === 'image');
-      if (stamps.length > 0) {
-          stamps.forEach(s => removeAnnotation(s.id));
-          setStatusMsg("Removed Image/Stamp 🧹");
-          return;
-      }
+      setIsAIProcessing(true);
+      setStatusMsg(rect ? "AI Inpainting: Removing area..." : "AI Vision: Auto-detecting artifacts...");
 
-      // 2. AI Fallback to detect embedded stamps
-      setStatusMsg("AI: Detecting stamps... 🤖");
       try {
+          // 1. Get Page Image (High Res)
           const imgBase64 = await Convert.getPageImage(file, pageNum);
           
-          // Get Image Dimensions for aspect ratio correction
-          const img = new Image();
-          img.src = imgBase64;
-          await img.decode();
-          const aspectRatio = img.height / img.width;
-
-          const boxes = await detectStamps(imgBase64);
+          let boxes: any[] = [];
           
-          if (boxes.length === 0) {
-              setStatusMsg("AI: No stamps found.");
-              return;
+          // 2. Logic: If rect provided (manual drag), use it. Else auto-detect.
+          if (rect) {
+              // Convert PDF point coords (595 width) to 0-1 normalized for mask generation logic later if needed
+              // But our helper 'createMask' below needs pixel matching.
+              // Convert.getPageImage uses scale 1.5 (~892px width).
+              // We need to map 'rect' (PDF points) to Image Pixels.
+              const pdfWidth = 595;
+              const scale = 1.5; // From Convert.getPageImage logic
+              
+              boxes = [{
+                  x: Math.floor(rect.x * scale),
+                  y: Math.floor(rect.y * scale),
+                  w: Math.floor(rect.w * scale),
+                  h: Math.floor(rect.h * scale)
+              }];
+          } else {
+             // Auto-detect using Vision (Old Logic)
+             const autoBoxes = await detectStamps(imgBase64);
+             if (autoBoxes.length === 0) {
+                  setIsAIProcessing(false);
+                  setStatusMsg("AI: No stamps detected.");
+                  return;
+             }
+             // Map normalized 0-1 to pixels
+             const imgObj = new Image();
+             imgObj.src = imgBase64;
+             await imgObj.decode();
+             boxes = autoBoxes.map(b => ({
+                 x: Math.floor(b.x * imgObj.width),
+                 y: Math.floor(b.y * imgObj.height),
+                 w: Math.floor(b.width * imgObj.width),
+                 h: Math.floor(b.height * imgObj.height)
+             }));
           }
 
-          // PDFCanvas uses a fixed width of 595px.
-          // We must map the normalized detection box to this fixed-width viewport.
-          const pageW = 595;
-          const pageH = pageW * aspectRatio; 
+          // 3. Generate Mask
+          const imgObj = new Image();
+          imgObj.src = imgBase64;
+          await imgObj.decode();
+
+          const canvas = document.createElement('canvas');
+          canvas.width = imgObj.width;
+          canvas.height = imgObj.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error("Canvas context failed");
+
+          // Black background (Keep)
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
           
-          boxes.forEach((box: any) => {
-               addAnnotation({
-                   id: Date.now().toString() + Math.random(),
-                   page: pageNum,
-                   type: 'whiteout',
-                   x: box.x * pageW,
-                   y: box.y * pageH,
-                   width: box.width * pageW,
-                   height: box.height * pageH
-               });
+          // White foreground (Remove)
+          ctx.fillStyle = "white";
+          boxes.forEach(box => {
+              ctx.fillRect(box.x, box.y, box.w, box.h);
           });
           
-          setStatusMsg(`AI: Removed ${boxes.length} stamps 🛡️`);
-          setMode('cursor');
+          const maskBase64 = canvas.toDataURL("image/png");
+
+          // 4. Call Gemini Inpainting
+          const cleanedImage = await removeStampWithMask(imgBase64, maskBase64);
           
+          if (!cleanedImage) throw new Error("AI returned no image");
+
+          // 5. Replace PDF Page
+          const newPdfBytes = await Edit.replacePageWithImage(file, pageNum - 1, cleanedImage);
+          replaceFile(newPdfBytes, "cleaned.pdf");
+
+          setIsAIProcessing(false);
+          setStatusMsg("Cleaned Page Replaced ✨");
+          setMode('cursor');
+
       } catch (e) {
-          console.error(e);
-          setStatusMsg("AI Error: Could not detect.");
+          console.error("Stamp Removal Error", e);
+          setIsAIProcessing(false);
+          setStatusMsg("AI Error: Removal Failed.");
       }
   };
 
@@ -307,13 +446,48 @@ export const EditorPage: React.FC = () => {
           if (!file) return;
           setIsExportOpen(false);
           setStatusMsg("Saving... 💾");
-          let finalBytes = await Edit.saveAnnotations(file, annotations, pageRotations);
+          
+          // 1. Convert dirty blocks to whiteout + text annotations
+          const blockAnnotations: any[] = [];
+          editableBlocks.filter(b => b.isDirty).forEach(block => {
+               // Whiteout the original area
+               blockAnnotations.push({
+                   id: `wo_${block.id}`,
+                   page: block.page,
+                   type: 'whiteout',
+                   x: block.x,
+                   y: block.y,
+                   width: block.width,
+                   height: block.height
+               });
+               // Add new text on top
+               blockAnnotations.push({
+                   id: `txt_${block.id}`,
+                   page: block.page,
+                   type: 'text',
+                   x: block.x,
+                   y: block.y,
+                   text: block.text,
+                   size: block.fontSize,
+                   fontFamily: block.fontFamily,
+                   color: '#000000'
+               });
+          });
+
+          // Merge normal annotations + block overrides
+          const allAnnotations = [...annotations, ...blockAnnotations];
+
+          let finalBytes = await Edit.saveAnnotations(file, allAnnotations, pageRotations);
+          
           if (options.password) {
              const tempFile = new File([finalBytes], fileName, { type: 'application/pdf' });
              finalBytes = await Security.encryptPdf(tempFile, options.password, settings.permissions);
           }
           download(finalBytes, fileName);
-      } catch (e) { console.error(e); alert("Export failed"); }
+      } catch (e) { 
+          console.error(e); 
+          alert("Export failed: " + (e as Error).message); 
+      }
   };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>, type: 'merge' | 'image' | 'word') => {
@@ -350,10 +524,26 @@ export const EditorPage: React.FC = () => {
   if (!file) return null;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
+    <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden relative">
         <input type="file" ref={mergeInputRef} className="hidden" accept=".pdf" onChange={e => handleFile(e, 'merge')} />
         <input type="file" ref={imageInputRef} className="hidden" accept="image/*" onChange={e => handleFile(e, 'image')} />
         <input type="file" ref={wordInputRef} className="hidden" accept=".docx,.pptx,.xlsx" onChange={e => handleFile(e, 'word')} />
+
+        {/* AI Processing Overlay */}
+        {isAIProcessing && (
+            <div className="absolute inset-0 z-[200] bg-background/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
+                <div className="relative">
+                    <div className="w-24 h-24 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+                    </div>
+                </div>
+                <h3 className="mt-8 text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-500 animate-pulse">
+                    Generative AI Processing
+                </h3>
+                <p className="text-muted-foreground mt-2">Scrubbing document and restructuring pixels...</p>
+            </div>
+        )}
 
         {/* 1. HEADER */}
         <div className="h-14 bg-white/60 dark:bg-black/60 backdrop-blur-xl border-b border-white/20 flex items-center px-4 justify-between shrink-0 z-40 shadow-sm">
@@ -434,7 +624,14 @@ export const EditorPage: React.FC = () => {
             </div>
         </div>
 
-        <ThinkingSidebar isOpen={isThinkingOpen} onClose={() => setIsThinkingOpen(false)} messages={chatMessages} isThinking={isThinking} onSendMessage={(txt) => { /*... */ }} />
+        <ThinkingSidebar 
+            isOpen={isThinkingOpen} 
+            onClose={() => setIsThinkingOpen(false)} 
+            messages={chatMessages} 
+            isThinking={isThinking} 
+            onSendMessage={handleChatSendMessage} 
+        />
+        
         <ReorderDialog isOpen={modal.type === 'reorder'} onClose={() => setModal({ type: null, isOpen: false })} pageCount={numPages} onApply={async (order) => { /*...*/ }} />
         <ExportDialog isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} onExport={handleExport} defaultFileName={file.name.replace('.pdf', '')} />
         <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />

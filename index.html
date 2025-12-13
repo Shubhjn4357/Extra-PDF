@@ -2,7 +2,7 @@
 <html lang="en" class="light">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>ExtraPDF - AI Powered Editor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -48,6 +48,7 @@
 
       html {
         scroll-behavior: smooth;
+        touch-action: manipulation;
       }
 
       body {
@@ -193,6 +194,10 @@
     "mammoth": "https://esm.sh/mammoth@1.8.0",
     "html2canvas": "https://esm.sh/html2canvas@1.4.1",
     "jspdf": "https://esm.sh/jspdf@2.5.2",
+    "react-dnd": "https://esm.sh/react-dnd@16.0.1?deps=react@18.3.1",
+    "react-dnd-html5-backend": "https://esm.sh/react-dnd-html5-backend@16.0.1?deps=react@18.3.1",
+    "react-dnd-touch-backend": "https://esm.sh/react-dnd-touch-backend@16.0.1?deps=react@18.3.1",
+    "immutability-helper": "https://esm.sh/immutability-helper@3.1.1",
     "zustand/": "https://esm.sh/zustand@^5.0.9/"
   }
 }

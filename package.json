@@ -24,7 +24,11 @@
     "tesseract.js": "5.1.1",
     "mammoth": "1.8.0",
     "html2canvas": "1.4.1",
-    "jspdf": "2.5.2"
+    "jspdf": "2.5.2",
+    "react-dnd": "16.0.1",
+    "react-dnd-html5-backend": "16.0.1",
+    "react-dnd-touch-backend": "16.0.1",
+    "immutability-helper": "3.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

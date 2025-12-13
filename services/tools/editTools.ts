@@ -162,3 +162,24 @@ export const addWatermark = async (file: File, text: string, colorHex: string = 
     });
     return await pdfDoc.save();
 };
+
+// NEW: Replace entire page with an image (e.g. after Inpainting)
+export const replacePageWithImage = async (file: File, pageIndex: number, imageBase64: string): Promise<Uint8Array> => {
+    const pdfDoc = await load(file);
+    const page = pdfDoc.getPage(pageIndex);
+    const { width, height } = page.getSize();
+    
+    const img = imageBase64.startsWith('data:image/png')
+        ? await pdfDoc.embedPng(imageBase64)
+        : await pdfDoc.embedJpg(imageBase64);
+        
+    // Draw image over the entire page
+    page.drawImage(img, {
+        x: 0,
+        y: 0,
+        width: width,
+        height: height
+    });
+    
+    return await pdfDoc.save();
+};

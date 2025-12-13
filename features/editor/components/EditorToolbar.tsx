@@ -3,7 +3,7 @@ import { EditorMode } from '../../../types';
 import { 
     Download, CheckCircle2, Eraser, 
     Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
-    Wand2, Sparkles
+    Wand2, Sparkles, ScanText
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -48,13 +48,22 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
     };
 
     const renderToolSpecifics = () => {
-        // Show Text Tools if in Text Mode OR (Cursor Mode AND Text Selected)
+        // Edit Text Mode
+        if (mode === 'edit_text') {
+             return (
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-blue-500/10 text-blue-600 rounded-full border border-blue-200/50 backdrop-blur-sm animate-in slide-in-from-top-2">
+                    <ScanText className="w-4 h-4" />
+                    <span className="text-xs font-bold">Edit Mode: Text is extracted. Drag or double-click to edit.</span>
+                </div>
+             );
+        }
+
+        // ... (Keep existing conditionals for other modes)
         if (mode === 'text' || (mode === 'cursor' && selectedAnnotationType === 'text')) {
-            return (
+             return (
                 <div className="flex items-center gap-3 px-4 py-1.5 bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-full border border-white/20 animate-in slide-in-from-top-2 shadow-sm">
                     {mode === 'cursor' && <span className="text-[10px] font-bold text-primary uppercase mr-2">Edit Text</span>}
-                    
-                    {/* Font Family */}
+                    {/* ... Text Controls ... */}
                     <select 
                         value={textStyle.fontFamily}
                         onChange={(e) => updateTextStyle('fontFamily', e.target.value)}
@@ -67,22 +76,13 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
 
                     <div className="h-4 w-px bg-white/20" />
 
-                    {/* Styles */}
                     <button onClick={() => updateTextStyle('isBold', !textStyle.isBold)} className={`p-1 rounded hover:bg-black/10 ${textStyle.isBold ? 'bg-white/50 text-primary' : ''}`}><Bold className="w-3.5 h-3.5" /></button>
                     <button onClick={() => updateTextStyle('isItalic', !textStyle.isItalic)} className={`p-1 rounded hover:bg-black/10 ${textStyle.isItalic ? 'bg-white/50 text-primary' : ''}`}><Italic className="w-3.5 h-3.5" /></button>
                     <button onClick={() => updateTextStyle('isUnderline', !textStyle.isUnderline)} className={`p-1 rounded hover:bg-black/10 ${textStyle.isUnderline ? 'bg-white/50 text-primary' : ''}`}><Underline className="w-3.5 h-3.5" /></button>
 
                     <div className="h-4 w-px bg-white/20" />
 
-                    {/* Alignment */}
-                    <button onClick={() => updateTextStyle('align', 'left')} className={`p-1 rounded hover:bg-black/10 ${textStyle.align === 'left' ? 'bg-white/50 text-primary' : ''}`}><AlignLeft className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => updateTextStyle('align', 'center')} className={`p-1 rounded hover:bg-black/10 ${textStyle.align === 'center' ? 'bg-white/50 text-primary' : ''}`}><AlignCenter className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => updateTextStyle('align', 'right')} className={`p-1 rounded hover:bg-black/10 ${textStyle.align === 'right' ? 'bg-white/50 text-primary' : ''}`}><AlignRight className="w-3.5 h-3.5" /></button>
-
-                    <div className="h-4 w-px bg-white/20" />
-
-                     {/* Font Size */}
-                     <input 
+                    <input 
                         type="number" 
                         value={textStyle.size} 
                         onChange={(e) => updateTextStyle('size', Number(e.target.value))}
@@ -91,7 +91,6 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
 
                     <div className="h-4 w-px bg-white/20" />
 
-                    {/* Color */}
                      <div className="relative group flex items-center">
                         <input 
                             type="color" 
@@ -101,11 +100,10 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
                         />
                     </div>
                 </div>
-            );
+             );
         }
 
-        // Show Drawing Tools if in Draw Mode OR (Cursor Mode AND Drawing Selected)
-        if (mode === 'draw' || (mode === 'cursor' && selectedAnnotationType === 'drawing')) {
+         if (mode === 'draw' || (mode === 'cursor' && selectedAnnotationType === 'drawing')) {
              return (
                 <div className="flex items-center gap-4 px-4 py-1 bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-full border border-white/20 animate-in slide-in-from-top-2">
                     <span className="text-xs font-medium text-muted-foreground uppercase">{mode === 'cursor' ? 'Edit Drawing' : 'Drawing'}</span>

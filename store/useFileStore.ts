@@ -1,10 +1,12 @@
 import { create } from 'zustand';
-import { Annotation } from '../types';
+import { Annotation, EditableBlock } from '../types';
 import { pdfjs } from 'react-pdf';
+// @ts-ignore
+import Tesseract from 'tesseract.js';
+import * as Convert from '../services/tools/convertTools';
 
 // Initialize worker globally
 if (pdfjs.GlobalWorkerOptions) {
-    // Using unpkg for the worker to match the version required by react-pdf v9
     pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@4.4.168/build/pdf.worker.min.mjs`;
 }
 
@@ -13,6 +15,7 @@ interface FileState {
   fileName: string | null;
   pdfText: string;
   annotations: Annotation[];
+  editableBlocks: EditableBlock[]; // New: Stores OCR/Extracted blocks
   numPages: number;
   pageRotations: Record<number, number>;
   
@@ -25,10 +28,16 @@ interface FileState {
   removeAnnotation: (id: string) => void;
   setNumPages: (n: number) => void;
   rotatePage: (page: number) => void;
+  
+  // Block Actions
+  updateBlock: (id: string, val: Partial<EditableBlock>) => void;
+  deleteBlock: (id: string) => void;
+  
   reset: () => void;
   
   // Async Actions
   extractAllText: (file: File) => Promise<void>;
+  scanPageForBlocks: (pageNum: number) => Promise<void>;
 }
 
 export const useFileStore = create<FileState>((set, get) => ({
@@ -36,6 +45,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   fileName: null,
   pdfText: "",
   annotations: [],
+  editableBlocks: [],
   numPages: 0,
   pageRotations: {},
 
@@ -43,6 +53,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       file, 
       fileName: file?.name || null,
       annotations: [], 
+      editableBlocks: [],
       pageRotations: {}, 
       pdfText: "" 
   }),
@@ -55,10 +66,10 @@ export const useFileStore = create<FileState>((set, get) => ({
         file: newFile, 
         fileName: newName,
         annotations: [], 
+        editableBlocks: [],
         pageRotations: {},
-        pdfText: "" // Reset text, needs re-extraction
+        pdfText: "" 
     });
-    // Trigger re-extraction if needed, or let component handle it
   },
 
   setPdfText: (text) => set({ pdfText: text }),
@@ -73,6 +84,14 @@ export const useFileStore = create<FileState>((set, get) => ({
     annotations: state.annotations.filter((a) => a.id !== id)
   })),
 
+  updateBlock: (id, val) => set((state) => ({
+    editableBlocks: state.editableBlocks.map(b => b.id === id ? { ...b, ...val, isDirty: true } : b)
+  })),
+
+  deleteBlock: (id) => set((state) => ({
+    editableBlocks: state.editableBlocks.filter(b => b.id !== id)
+  })),
+
   setNumPages: (n) => set({ numPages: n }),
 
   rotatePage: (page) => set((state) => ({
@@ -83,7 +102,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   })),
 
   reset: () => set({ 
-      file: null, fileName: null, pdfText: "", annotations: [], numPages: 0, pageRotations: {} 
+      file: null, fileName: null, pdfText: "", annotations: [], editableBlocks: [], numPages: 0, pageRotations: {} 
   }),
 
   extractAllText: async (file) => {
@@ -99,7 +118,6 @@ export const useFileStore = create<FileState>((set, get) => ({
         let lastY = -1;
         const pageText = textContent.items.map((item: any) => {
             let str = item.str;
-            // Simple heuristic for newlines based on Y position difference
             if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
                 str = '\n' + str;
             }
@@ -113,5 +131,81 @@ export const useFileStore = create<FileState>((set, get) => ({
     } catch (error) {
       console.error("Error extracting text:", error);
     }
+  },
+
+  scanPageForBlocks: async (pageNum: number) => {
+      const { file, editableBlocks } = get();
+      if (!file) return;
+      
+      // Clear existing blocks for this page to avoid duplicates
+      set({ editableBlocks: editableBlocks.filter(b => b.page !== pageNum) });
+
+      try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjs.getDocument(arrayBuffer).promise;
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.0 });
+          
+          const textContent = await page.getTextContent();
+          
+          const newBlocks: EditableBlock[] = [];
+
+          // 1. Try Native Text Extraction
+          if (textContent.items.length > 0) {
+              console.log("Native text found, extracting...");
+              // Group items by line roughly
+              textContent.items.forEach((item: any, idx: number) => {
+                  if (!item.str.trim()) return;
+                  // PDF coords (bottom-left) to Viewport coords (top-left)
+                  // item.transform: [scaleX, skewX, skewY, scaleY, x, y]
+                  const tx = item.transform;
+                  const x = tx[4];
+                  const y = viewport.height - tx[5] - item.height; 
+                  
+                  newBlocks.push({
+                      id: `native_${pageNum}_${idx}`,
+                      page: pageNum,
+                      x: x,
+                      y: y,
+                      text: item.str,
+                      width: item.width,
+                      height: item.height || tx[0], // fallback to scaleY
+                      fontSize: tx[0] || 12, // approx font size from scale
+                      fontFamily: 'Helvetica',
+                  });
+              });
+          } else {
+              // 2. Fallback to OCR (Tesseract)
+              console.log("No native text, running OCR...");
+              const imgData = await Convert.getPageImage(file, pageNum);
+              
+              const worker = await Tesseract.createWorker('eng');
+              const { data } = await worker.recognize(imgData);
+              await worker.terminate();
+
+              // Canvas dimensions vs Tesseract dimensions mapping
+              // Convert.getPageImage uses scale 1.5, so we need to adjust
+              const scaleFactor = 1.5; 
+
+              (data as any).words.forEach((w: any, idx: number) => {
+                   newBlocks.push({
+                       id: `ocr_${pageNum}_${idx}`,
+                       page: pageNum,
+                       x: w.bbox.x0 / scaleFactor,
+                       y: w.bbox.y0 / scaleFactor,
+                       text: w.text,
+                       width: (w.bbox.x1 - w.bbox.x0) / scaleFactor,
+                       height: (w.bbox.y1 - w.bbox.y0) / scaleFactor,
+                       fontSize: (w.bbox.y1 - w.bbox.y0) / scaleFactor * 0.8, // Approx
+                       fontFamily: 'Courier',
+                   });
+              });
+          }
+          
+          set((state) => ({ editableBlocks: [...state.editableBlocks, ...newBlocks] }));
+
+      } catch (e) {
+          console.error("Scan Error:", e);
+      }
   }
 }));

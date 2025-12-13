@@ -3,7 +3,8 @@ import { LucideIcon } from 'lucide-react';
 export type EditorMode = 
   | 'cursor' | 'text' | 'whiteout' | 'replace' | 'draw' 
   | 'image' | 'watermark' | 'eraser' | 'stamp_remover'
-  | 'crop' | 'redact' | 'sign';
+  | 'crop' | 'redact' | 'sign'
+  | 'edit_text'; // NEW: True Edit Mode
 
 export type ToolCategory = 'organize' | 'edit' | 'security' | 'convert';
 
@@ -21,6 +22,19 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   isThinking?: boolean;
+}
+
+export interface EditableBlock {
+    id: string;
+    page: number;
+    x: number; // Percentage 0-1 or points? Let's use Points relative to viewport
+    y: number;
+    text: string;
+    width: number;
+    height: number;
+    fontSize: number;
+    fontFamily: string;
+    isDirty?: boolean; // If true, it means it changed from original
 }
 
 export interface PDFState {

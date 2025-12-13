@@ -1,4 +1,5 @@
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
+import { pdfjs } from 'react-pdf';
 
 // Helper to load PDF
 const load = async (file: File) => await PDFDocument.load(await file.arrayBuffer());
@@ -68,4 +69,41 @@ export const addPageNumbers = async (file: File): Promise<Uint8Array> => {
         });
     });
     return await pdfDoc.save();
+};
+
+export const removeEmptyPages = async (file: File): Promise<{ pdfBytes: Uint8Array | null; removedCount: number }> => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument(arrayBuffer).promise;
+    const totalPages = pdf.numPages;
+    const emptyPageIndices: number[] = []; // 1-based indices for consistency with other tools
+
+    for (let i = 1; i <= totalPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const str = textContent.items.map((item: any) => item.str).join('').trim();
+        
+        // Basic check: No text
+        if (str.length === 0) {
+             // Heuristic: Check for drawing operations
+             // An absolutely empty page typically has very few operators (save, restore, transform)
+             // A scanned image page will have 'paintImageXObject' or similar
+             const ops = await page.getOperatorList();
+             
+             // Threshold: If fewer than 10 drawing commands, assume it's blank.
+             // Real content usually has many more.
+             if (ops.fnArray.length < 10) {
+                emptyPageIndices.push(i);
+             }
+        }
+    }
+
+    if (emptyPageIndices.length === 0) {
+        return { pdfBytes: null, removedCount: 0 };
+    }
+
+    const newPdfBytes = await deletePages(file, emptyPageIndices);
+    return { 
+        pdfBytes: newPdfBytes,
+        removedCount: emptyPageIndices.length 
+    };
 };

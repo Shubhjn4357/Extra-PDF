@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { X, Download, Lock, FileDown, Sliders } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Download, Lock, FileDown, Sliders, Zap } from 'lucide-react';
+import { useSettingsStore } from '../../store/useSettingsStore';
 
 export interface ExportOptions {
     password?: string;
@@ -14,10 +15,19 @@ interface ExportDialogProps {
 }
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onExport, defaultFileName }) => {
+  const { settings } = useSettingsStore();
   const [fileName, setFileName] = useState(defaultFileName.replace('.pdf', ''));
   const [compression, setCompression] = useState(80);
   const [isEncrypted, setIsEncrypted] = useState(false);
   const [password, setPassword] = useState('');
+
+  // Apply Auto-Compress setting on open
+  useEffect(() => {
+    if (isOpen) {
+        // If autoCompress is on, default to 50% (aggressive) otherwise 80% (high quality)
+        setCompression(settings.autoCompress ? 50 : 80);
+    }
+  }, [isOpen, settings.autoCompress]);
 
   if (!isOpen) return null;
 
@@ -59,6 +69,11 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onE
                 <div className="flex justify-between text-sm">
                     <span className="font-medium text-muted-foreground flex items-center gap-2">
                         <Sliders className="w-4 h-4" /> Compression Quality
+                        {settings.autoCompress && (
+                            <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                                <Zap className="w-3 h-3" /> Auto
+                            </span>
+                        )}
                     </span>
                     <span className="text-primary font-mono">{compression}%</span>
                 </div>
@@ -70,7 +85,9 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onE
                     onChange={(e) => setCompression(Number(e.target.value))}
                     className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
                 />
-                <p className="text-[10px] text-muted-foreground">Lower quality reduces file size.</p>
+                <p className="text-[10px] text-muted-foreground">
+                    {compression < 50 ? "High compression (smaller file, lower quality)" : "Balanced compression"}
+                </p>
             </div>
 
             {/* Encryption Toggle */}
@@ -109,7 +126,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, onE
                 </button>
                 <button 
                     onClick={() => onExport(fileName + '.pdf', { password: isEncrypted ? password : undefined, compression })}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+                    disabled={isEncrypted && !password}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-lg shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Download className="w-4 h-4" />
                     Export PDF

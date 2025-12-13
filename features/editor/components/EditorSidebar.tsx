@@ -4,8 +4,7 @@ import {
     MousePointer, Type, Eraser, PenLine, Scissors, Merge, 
     Shield, RotateCw, FileImage, Layers, Trash, Stamp, 
     Image as ImageIcon, AlignLeft, Info, FileStack,
-    Hash, FileOutput, Wand2, FileSpreadsheet, Presentation,
-    FileText, PenTool, Crop, Hammer, ScanText, Code
+    Hash, FileOutput, Wand2, FileText, FileMinus
 } from 'lucide-react';
 import { useSettingsStore } from '../../../store/useSettingsStore';
 
@@ -20,6 +19,7 @@ export const toolsList: Tool[] = [
     // ORGANIZE
     { id: 'merge', label: 'Merge', icon: Merge, category: 'organize', description: 'Combine PDFs' },
     { id: 'split', label: 'Split', icon: Scissors, category: 'organize', description: 'Extract pages', requiresModal: true },
+    { id: 'remove_empty', label: 'Remove Empty', icon: FileMinus, category: 'organize', description: 'Auto-delete blank' },
     { id: 'reorder', label: 'Reorder', icon: FileStack, category: 'organize', description: 'Move pages', requiresModal: true },
     { id: 'rotate', label: 'Rotate', icon: RotateCw, category: 'organize', description: 'Rotate Page' },
     { id: 'delete_page', label: 'Delete', icon: Trash, category: 'organize', description: 'Remove Page', requiresModal: true },
@@ -27,41 +27,33 @@ export const toolsList: Tool[] = [
     
     // EDIT
     { id: 'cursor', label: 'Select', icon: MousePointer, category: 'edit', description: 'Select' },
-    { id: 'text', label: 'Text', icon: Type, category: 'edit', description: 'Add Text' },
-    { id: 'sign', label: 'Sign', icon: PenTool, category: 'edit', description: 'Signature' },
+    { id: 'edit_text', label: 'Edit Text', icon: FileText, category: 'edit', description: 'Edit Existing' }, // NEW
+    { id: 'text', label: 'Add Text', icon: Type, category: 'edit', description: 'Add Text' },
     { id: 'draw', label: 'Draw', icon: PenLine, category: 'edit', description: 'Freehand' },
-    { id: 'redact', label: 'Redact', icon: Shield, category: 'edit', description: 'Blackout' },
+    { id: 'eraser', label: 'Eraser', icon: Eraser, category: 'edit', description: 'Delete Drawing' },
     { id: 'whiteout', label: 'Whiteout', icon: AlignLeft, category: 'edit', description: 'Cover Text' },
-    { id: 'crop', label: 'Crop', icon: Crop, category: 'edit', description: 'Crop Page' },
     { id: 'add_image', label: 'Image', icon: ImageIcon, category: 'edit', description: 'Add Image' },
     { id: 'watermark', label: 'Stamp', icon: Stamp, category: 'edit', description: 'Watermark', requiresModal: true },
     { id: 'stamp_remover', label: 'Clean AI', icon: Wand2, category: 'edit', description: 'Remove Stamp' },
-    { id: 'eraser', label: 'Eraser', icon: Eraser, category: 'edit', description: 'Delete Drawing' },
 
-    // SECURITY / UTILS
+    // SECURITY
     { id: 'encrypt', label: 'Encrypt', icon: Shield, category: 'security', description: 'Password', requiresModal: true },
     { id: 'flatten', label: 'Flatten', icon: Layers, category: 'security', description: 'Flatten' },
-    { id: 'repair', label: 'Repair', icon: Hammer, category: 'security', description: 'Fix Data' },
     { id: 'metadata', label: 'Meta', icon: Info, category: 'security', description: 'Metadata', requiresModal: true },
 
     // CONVERT
-    { id: 'pdf_to_word', label: 'To Word', icon: FileText, category: 'convert', description: 'To DOCX' },
-    { id: 'pdf_to_excel', label: 'To Excel', icon: FileSpreadsheet, category: 'convert', description: 'To XLSX' },
-    { id: 'pdf_to_ppt', label: 'To PPT', icon: Presentation, category: 'convert', description: 'To PPTX' },
-    { id: 'pdf_to_jpg', label: 'To JPG', icon: FileOutput, category: 'convert', description: 'To Images' },
-    { id: 'ocr_pdf', label: 'OCR', icon: ScanText, category: 'convert', description: 'Extract Text' },
-    { id: 'word_to_pdf', label: 'Word to PDF', icon: FileImage, category: 'convert', description: 'Docx to PDF' },
-    { id: 'html_to_pdf', label: 'HTML to PDF', icon: Code, category: 'convert', description: 'Web to PDF', requiresModal: true },
+    { id: 'pdf_to_word', label: 'Word', icon: FileImage, category: 'convert', description: 'To DOCX' },
+    { id: 'pdf_to_jpg', label: 'JPG', icon: FileOutput, category: 'convert', description: 'To Images' },
 ];
 
 export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiveCategory, activeToolId, onToolSelect }) => {
   const { settings } = useSettingsStore();
-  const categories: ToolCategory[] = ['edit', 'organize', 'convert', 'security'];
+  const categories: ToolCategory[] = ['edit', 'organize', 'security', 'convert'];
   const isCompact = settings.density === 'compact';
 
   return (
     <div className={`
-        w-20 h-full flex flex-col items-center shrink-0 z-20 shadow-xl transition-all border-r
+        w-20 flex flex-col items-center shrink-0 z-20 shadow-xl transition-all border-r
         bg-white/60 dark:bg-black/60 backdrop-blur-xl border-white/20
         ${isCompact ? 'py-2 gap-3' : 'py-4 gap-6'}
     `}>
@@ -98,7 +90,7 @@ export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiv
                     key={tool.id}
                     onClick={() => onToolSelect(tool)}
                     className={`
-                        group relative w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-all shrink-0
+                        group relative w-full aspect-square rounded-xl flex flex-col items-center justify-center gap-1 transition-all
                         ${activeToolId === tool.id 
                             ? 'bg-primary/10 text-primary border border-primary/20 shadow-inner' 
                             : 'text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 hover:text-foreground'
