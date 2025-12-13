@@ -1,3 +1,4 @@
+<img src="public/extraPDF.png" alt="ExtraPDF">
 # ExtraPDF - Contextual Intelligence AI PDF Editor
 
 ExtraPDF is a powerful, next-generation PDF editor built with Next.js, AI (Gemini), and advanced client-side PDF processing. It provides a suite of tools for editing, organizing, converting, and securing your documents, wrapped in a beautiful, fluid UI.
@@ -60,8 +61,10 @@ Accelerate your workflow with global hotkeys:
 - `Alt + P`: Split
 
 ## Tech Stack
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Styling**: TailwindCSS + Framer Motion
 - **PDF Core**: `react-pdf`, `pdf-lib`
 - **AI**: Google Gemini Pro Vision
 - **State**: Zustand + IndexedDB
+
+##Created By [Shubh Jain](https://github.com/Shubhjn4357)

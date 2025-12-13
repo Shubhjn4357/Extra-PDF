@@ -65,7 +65,7 @@ export const useFileStore = create<FileState>((set, get) => ({
   replaceFile: (newFileBytes, name) => {
     const currentFile = get().file;
     const newName = name || currentFile?.name || 'document.pdf';
-    const blob = new Blob([Buffer.from(newFileBytes)], { type: 'application/pdf' });
+    const blob = new Blob([Buffer.from(newFileBytes) as any], { type: 'application/pdf' });
     const newFile = new File([blob], newName, { type: 'application/pdf' });
     set({
       file: newFile,

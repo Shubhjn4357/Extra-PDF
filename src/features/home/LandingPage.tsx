@@ -61,7 +61,7 @@ export const LandingPage: React.FC = () => {
                     : "images_bundle.pdf";
 
                 // Fix: Properly handle Blob/File creation without 'any'
-                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
                 const newFile = new File([blob], fileName, { type: 'application/pdf' });
 
                 setFile(newFile);
