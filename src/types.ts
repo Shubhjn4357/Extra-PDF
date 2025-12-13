@@ -4,7 +4,8 @@ export type EditorMode =
   | 'cursor' | 'text' | 'whiteout' | 'replace' | 'draw' 
   | 'image' | 'watermark' | 'eraser' | 'stamp_remover'
   | 'crop' | 'redact' | 'sign'
-  | 'edit_text'; // NEW: True Edit Mode
+  | 'compare' // Added Compare Mode
+  | 'edit_text'; // True Edit Mode
 
 export type ToolCategory = 'organize' | 'edit' | 'security' | 'convert';
 

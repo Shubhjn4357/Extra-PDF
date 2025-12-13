@@ -10,7 +10,7 @@ export const encryptPdf = async (
     // Load source
     const srcDoc = await load(file);
 
-    // Create destination (fresh doc always has encrypt method)
+    // Create destination
     const dstDoc = await PDFDocument.create();
 
     // Copy all pages
@@ -19,25 +19,29 @@ export const encryptPdf = async (
     copiedPages.forEach(page => dstDoc.addPage(page));
 
     // Construct permissions object
-    const permObj: any = {
-        modifying: !!permissions.modifying,
-        copying: !!permissions.copying,
-        annotating: !!permissions.modifying,
-        fillingForms: !!permissions.modifying,
-        contentAccessibility: !!permissions.copying,
-        documentAssembly: !!permissions.modifying,
-    };
-
-    if (permissions.printing) {
-        permObj.printing = 'highResolution';
-    }
+    const p = permissions;
 
     // Encrypt the fresh document
-    (dstDoc as any).encrypt({
-        userPassword: password,
-        ownerPassword: password,
-        permissions: permObj
-    });
+    // We cast to any because Typescript definitions might be outdated in the environment
+    // or strict checks are interfering, but the method exists in standard pdf-lib.
+    if (typeof (dstDoc as any).encrypt === 'function') {
+        (dstDoc as any).encrypt({
+            userPassword: password,
+            ownerPassword: password,
+            permissions: {
+                printing: p.printing ? 'highResolution' : undefined,
+                modifying: p.modifying,
+                copying: p.copying,
+                annotating: p.modifying,
+                fillingForms: p.modifying,
+                contentAccessibility: p.copying,
+                documentAssembly: p.modifying
+            }
+        });
+    } else {
+        console.warn("PDF Encryption method not found on document instance.");
+        throw new Error("Encryption not supported in this environment.");
+    }
 
     return await dstDoc.save();
 };

@@ -13,22 +13,21 @@ import { ThinkingSidebar } from './ThinkingSidebar';
 import { ExportDialog, ExportOptions } from '@/components/ui/ExportDialog';
 import { SettingsDialog } from '@/components/ui/SettingsDialog';
 import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '@/types';
-import { ChevronLeft, Menu, Settings2, Scissors, PanelLeftClose, PanelLeftOpen, Stamp, Lock, Sparkles, Loader2, Bot } from 'lucide-react';
-import { createChatSession, detectStamps, streamResponse, prepareDocumentPrompt, removeStampWithMask } from '@/services/geminiService';
+import { Menu, Settings2, Scissors, Stamp, Lock, Loader2, ChevronLeft } from 'lucide-react';
+import { createChatSession, streamResponse } from '@/services/geminiService';
 import { buildFinalPrompt, generateMaskBase64 } from '@/services/editorHelpers';
-
 
 // Import Modular Tools
 import * as Organize from '@/services/tools/organizeTools';
 import * as Edit from '@/services/tools/editTools';
 import * as Security from '@/services/tools/securityTools';
 import * as Convert from '@/services/tools/convertTools';
-import * as Optimize from '@/services/tools/optimizeTools'; // New
+import * as Optimize from '@/services/tools/optimizeTools';
+import { detectStamps, removeStampWithMask } from '@/services/geminiService';
 
 export const EditorPage: React.FC = () => {
     const router = useRouter();
     const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation, editableBlocks, isRestoring } = useFileStore();
-
     const { settings } = useSettingsStore();
 
     // View State
@@ -38,12 +37,15 @@ export const EditorPage: React.FC = () => {
     const [statusMsg, setStatusMsg] = useState('');
     const [activePage, setActivePage] = useState(1);
 
+    // Compare State
+    const [compareFile, setCompareFile] = useState<File | null>(null);
+
     // UI State
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const [isThumbnailsOpen, setThumbnailsOpen] = useState(true);
     const [isThinkingOpen, setIsThinkingOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [isAIProcessing, setIsAIProcessing] = useState(false); // NEW: Global AI Loading State
+    const [isAIProcessing, setIsAIProcessing] = useState(false);
 
     // Selection State
     const [selectedAnnId, setSelectedAnnId] = useState<string | null>(null);
@@ -85,9 +87,12 @@ export const EditorPage: React.FC = () => {
     const mergeInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const wordInputRef = useRef<HTMLInputElement>(null);
+    const compareInputRef = useRef<HTMLInputElement>(null);
+
     const [pendingImage, setPendingImage] = useState<string | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+    // Initialization
     useEffect(() => {
         if (!isRestoring && !file) {
             router.push('/');
@@ -101,17 +106,31 @@ export const EditorPage: React.FC = () => {
 
         chatSessionRef.current = createChatSession();
 
-        // Restore
+        // Restore State
         (async () => {
-            // restoreState is now idempotent and handles isRestoring
             if (useFileStore.getState().isRestoring) {
                 await useFileStore.getState().restoreState();
             }
         })();
+
         // Global Shortcuts Listener
         const handleKeyDown = (e: KeyboardEvent) => {
             // Ignore if typing in input/textarea
             if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+            // Undo/Redo Shortcuts (Ctrl+Z, Ctrl+Y)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                useFileStore.getState().undo();
+                setStatusMsg("Undo ↩️");
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                useFileStore.getState().redo();
+                setStatusMsg("Redo ↪️");
+                return;
+            }
 
             switch (e.key.toLowerCase()) {
                 case 'v': case 'escape': handleToolSelect({ id: 'cursor' } as any); break;
@@ -120,29 +139,21 @@ export const EditorPage: React.FC = () => {
                 case 'w': handleToolSelect({ id: 'whiteout' } as any); break;
                 case 'x': handleToolSelect({ id: 'crop' } as any); break;
                 case 's': handleToolSelect({ id: 'sign' } as any); break;
-                case 'r': handleToolSelect({ id: 'replace' } as any); break; // Redact/Replace
-
-                // Additional Shortcuts
+                case 'r': handleToolSelect({ id: 'replace' } as any); break; 
                 case 'e': handleToolSelect({ id: 'eraser' } as any); break;
                 case 'i': handleToolSelect({ id: 'add_image' } as any); break;
-                case 'm': handleToolSelect({ id: 'watermark' } as any); break; // Stamp/Mark
-                case 'c': handleToolSelect({ id: 'stamp_remover' } as any); break; // Clean
-                case 'o': handleToolSelect({ id: 'reorder' } as any); break; // Organize/Reorder
-
-                // Modifiers need specific handling if collisions exist, but simple keys here:
-                case 'p': if (e.altKey) handleToolSelect({ id: 'split' } as any); break; // Alt+P Split
-
+                case 'm': handleToolSelect({ id: 'watermark' } as any); break;
+                case 'c': handleToolSelect({ id: 'stamp_remover' } as any); break;
+                case 'o': handleToolSelect({ id: 'reorder' } as any); break;
+                case 'p': if (e.altKey) handleToolSelect({ id: 'split' } as any); break;
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
-
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
+        return () => window.removeEventListener('keydown', handleKeyDown);
     }, []);
 
-    // Persist file state when annotations/blocks change (debounced)
+    // Persistence
     useEffect(() => {
         const timeout = setTimeout(() => {
             (async () => {
@@ -159,20 +170,15 @@ export const EditorPage: React.FC = () => {
     }, [modal.type, settings.defaultPassword]);
 
     /* --- Chat & AI Implementation --- */
-
     const handleChatSendMessage = async (text: string) => {
         if (!chatSessionRef.current) return;
-
         setIsThinking(true);
         const userMsgId = Date.now().toString();
-
-        // Optimistic UI update
         setChatMessages(prev => [...prev, { id: userMsgId, role: 'user', text }]);
 
         const finalPrompt = buildFinalPrompt(pdfText, text, isFirstMsgRef.current, settings);
         isFirstMsgRef.current = false;
 
-        // Placeholder for model response
         const modelMsgId = (Date.now() + 1).toString();
         setChatMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
 
@@ -180,51 +186,31 @@ export const EditorPage: React.FC = () => {
             chatSessionRef.current,
             finalPrompt,
             (chunk) => {
-                setChatMessages(prev => prev.map(m =>
-                    m.id === modelMsgId ? { ...m, text: m.text + chunk } : m
-                ));
+                setChatMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: m.text + chunk } : m));
             },
-            async (toolCall) => {
-                // Intercept tool calls from Gemini
-                return await handleAIToolExecution(toolCall);
-            }
+            async (toolCall) => await handleAIToolExecution(toolCall)
         );
-
         setIsThinking(false);
     };
 
     const handleAIToolExecution = async (toolCall: any) => {
         const { name, args } = toolCall;
         console.log(`[AI Tool] Executing ${name}`, args);
-
         try {
             switch (name) {
                 case 'edit_pdf_add_text':
                     addAnnotation({
-                        id: Date.now().toString(),
-                        page: args.page,
-                        type: 'text',
-                        x: args.x || 100,
-                        y: args.y || 100,
-                        text: args.text,
-                        color: args.color || '#000000',
-                        size: args.fontSize || 14
+                        id: Date.now().toString(), page: args.page, type: 'text', x: args.x || 100, y: args.y || 100, text: args.text, color: args.color || '#000000', size: args.fontSize || 14
                     });
                     return "Text added successfully.";
-
                 case 'clean_page_image':
-                    // Trigger the visual stamp removal process
-                    // Default to page center if no interaction? AI auto-detect
                     await handleStampRemove(args.page);
                     return "Stamp removal process completed.";
-
                 case 'organize_rotate_page':
                     rotatePage(args.page);
                     return `Page ${args.page} rotated.`;
-
                 case 'organize_delete_page':
                     if (args.pages && args.pages.length > 0) {
-                        // We need to actually replace the file, which is async
                         setIsAIProcessing(true);
                         const newBytes = await Organize.deletePages(file!, args.pages);
                         replaceFile(newBytes);
@@ -232,10 +218,8 @@ export const EditorPage: React.FC = () => {
                         return `Pages ${args.pages.join(', ')} deleted.`;
                     }
                     return "No pages specified.";
-
                 case 'get_page_count':
                     return `The document has ${numPages} pages.`;
-
                 default:
                     return "Tool not implemented.";
             }
@@ -247,8 +231,11 @@ export const EditorPage: React.FC = () => {
     };
 
     /* --- Editor Handlers --- */
-
     const handleToolSelect = (tool: Tool) => {
+        if (tool.id === 'compare') {
+            compareInputRef.current?.click();
+            return;
+        }
         if (['cursor', 'text', 'edit_text', 'draw', 'whiteout', 'eraser', 'stamp_remover', 'crop', 'redact', 'sign'].includes(tool.id)) {
             setMode(tool.id as EditorMode);
             if (tool.id !== 'cursor') setSelectedAnnId(null);
@@ -269,194 +256,79 @@ export const EditorPage: React.FC = () => {
         try {
             if (!file) return;
             switch (id) {
-                case 'rotate':
-                    rotatePage(activePage);
-                    setStatusMsg(`Page ${activePage} Rotated 🔄`);
-                    break;
+                case 'rotate': rotatePage(activePage); setStatusMsg(`Page ${activePage} Rotated 🔄`); break;
                 case 'merge': mergeInputRef.current?.click(); break;
                 case 'add_image': imageInputRef.current?.click(); break;
                 case 'word_to_pdf': wordInputRef.current?.click(); break;
-
-                // OPTIMIZE
                 case 'compress':
                     setStatusMsg("Compressing PDF... 🗜️");
                     try {
                         const compressedBytes = await Optimize.compressPdf(file);
                         replaceFile(compressedBytes, file.name.replace('.pdf', '_compressed.pdf'));
                         setStatusMsg("Compressed! 📉");
+                        // Also persist this change to history? replaceFile clears history currently.
+                        // Ideally compress should add to history, but replaceFile logic implies new doc.
                     } catch (e) { alert("Compression Failed"); }
                     break;
-
                 case 'remove_empty':
                     setStatusMsg("Scanning for blank pages... 🔍");
                     const { pdfBytes, removedCount } = await Organize.removeEmptyPages(file);
                     if (pdfBytes && removedCount > 0) {
                         replaceFile(pdfBytes);
                         setStatusMsg(`Removed ${removedCount} empty pages 🗑️`);
-                    } else {
-                        setStatusMsg("No empty pages found 🤷");
-                    }
+                    } else { setStatusMsg("No empty pages found 🤷"); }
                     break;
                 case 'flatten':
-                    replaceFile(await Security.flattenPdf(file), 'flattened.pdf');
-                    setStatusMsg("PDF Flattened 📄"); break;
+                    replaceFile(await Security.flattenPdf(file), 'flattened.pdf'); setStatusMsg("PDF Flattened 📄"); break;
                 case 'repair':
-                    setStatusMsg("Repairing... 🔧");
-                    replaceFile(await Convert.repairPdf(file), 'repaired.pdf');
-                    setStatusMsg("PDF Repaired ✅"); break;
+                    setStatusMsg("Repairing... 🔧"); replaceFile(await Convert.repairPdf(file), 'repaired.pdf'); setStatusMsg("PDF Repaired ✅"); break;
                 case 'page_numbers':
-                    replaceFile(await Organize.addPageNumbers(file), 'numbered.pdf');
-                    setStatusMsg("Added Numbers 🔢"); break;
-
-                // CONVERT
-                case 'pdf_to_word':
-                    download(await Convert.createDocxFromText(pdfText), 'converted.docx'); break;
-                case 'pdf_to_excel':
-                    setStatusMsg("Extracting Tables... 📊");
-                    download(await Convert.createXlsxFromPdf(file), 'tables.xlsx'); break;
-                case 'pdf_to_ppt':
-                    setStatusMsg("Creating Slides... 🎞️");
-                    download(await Convert.createPptxFromPdf(file), 'presentation.pptx'); break;
-                case 'ocr_pdf':
-                    setStatusMsg("Scanning... 👁️");
-                    const text = await Convert.ocrPdf(file);
-                    download(new Blob([text], { type: 'text/plain' }), 'extracted_text.txt'); break;
+                    replaceFile(await Organize.addPageNumbers(file), 'numbered.pdf'); setStatusMsg("Added Numbers 🔢"); break;
+                case 'pdf_to_word': download(await Convert.createDocxFromText(pdfText), 'converted.docx'); break;
+                case 'pdf_to_excel': setStatusMsg("Extracting Tables... 📊"); download(await Convert.createXlsxFromPdf(file), 'tables.xlsx'); break;
+                case 'pdf_to_ppt': setStatusMsg("Creating Slides... 🎞️"); download(await Convert.createPptxFromPdf(file), 'presentation.pptx'); break;
+                case 'ocr_pdf': setStatusMsg("Scanning... 👁️"); download(new Blob([await Convert.ocrPdf(file)], { type: 'text/plain' }), 'extracted_text.txt'); break;
                 case 'pdf_to_jpg':
                     setStatusMsg("Converting... 🖼️");
                     const imgs = await Convert.pdfToImages(file);
                     if (imgs.length > 0) {
-                        const a = document.createElement('a');
-                        a.href = imgs[0]; a.download = `page_1.jpg`; a.click();
-                        setStatusMsg('Saved JPG ✅');
+                        const a = document.createElement('a'); a.href = imgs[0]; a.download = `page_1.jpg`; a.click(); setStatusMsg('Saved JPG ✅');
                     } break;
-
-                // SECURITY
                 case 'unlock':
-                    // Decrypting happens via Password Modal usually, but if open, removing password is just saving.
-                    // If file is already open here, it is unlocked in memory.
-                    // So 'Unlock' tool effectively saves a copy without password if re-saving?
-                    // Actually, 'unlock' implies removing permission. 
-                    // We can just trigger a save without encryption.
                     setStatusMsg("Removing Password... 🔓");
-                    // Just save current file bytes?
                     const unlockedBytes = await file.arrayBuffer();
-                    // If it was encrypted, we need to ensure we save it freshly.
-                    // The store 'file' is the Blob. If we opened it, we have the decrypted version in memory?
-                    // Yes, if we are viewing it, it is decrypted.
-                    download(new Uint8Array(unlockedBytes), 'unlocked.pdf');
+                    download(new Uint8Array(unlockedBytes), 'unlocked.pdf'); // Assuming file in memory is decrypted
                     break;
             }
         } catch (e) { console.error(e); alert('Action Failed: ' + (e as Error).message); }
     };
 
-    const handleAnnotationSelect = (ann: any | null) => {
-        setSelectedAnnId(ann ? ann.id : null);
-        if (ann) {
-            if (ann.type === 'text') {
-                setTextStyle({
-                    fontFamily: ann.fontFamily || 'Helvetica',
-                    isBold: !!ann.isBold, isItalic: !!ann.isItalic, isUnderline: !!ann.isUnderline,
-                    align: ann.align || 'left', size: ann.size || 14
-                });
-                setDrawColor(ann.color || '#000000');
-            } else if (ann.type === 'drawing') {
-                setDrawColor(ann.color || '#000000');
-                setBrushSize(ann.thickness || 2);
-            }
-        }
-    };
-
-    const handleTextStyleChange = (updater: any) => {
-        setTextStyle((prev: any) => {
-            const newState = typeof updater === 'function' ? updater(prev) : updater;
-            if (mode === 'cursor' && selectedAnnId && selectedAnnotation?.type === 'text') {
-                updateAnnotation(selectedAnnId, newState);
-            }
-            return newState;
-        });
-    };
-
-    const handlePageClick = (pageNum: number) => {
-        setActivePage(pageNum);
-        const el = document.getElementById(`page-wrapper-${pageNum}`);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    };
-
-    // REAL AI STAMP REMOVAL (INPAINTING)
     const handleStampRemove = async (pageNum: number, rect?: { x: number, y: number, w: number, h: number }) => {
         if (!file) return;
-
         setIsAIProcessing(true);
         setStatusMsg(rect ? "AI Inpainting: Removing area..." : "AI Vision: Auto-detecting artifacts...");
-
         try {
-            // 1. Get Page Image (High Res)
             const imgBase64 = await Convert.getPageImage(file, pageNum);
-
             let boxes: any[] = [];
-
-            // 2. Logic: If rect provided (manual drag), use it. Else auto-detect.
             if (rect) {
-                // Convert PDF point coords (595 width) to 0-1 normalized for mask generation logic later if needed
-                // But our helper 'createMask' below needs pixel matching.
-                // Convert.getPageImage uses scale 1.5 (~892px width).
-                // We need to map 'rect' (PDF points) to Image Pixels.
-
-                // Fix: Verify scale matches Convert.getPageImage (1.5)
-                const scale = 1.5;
-
-                console.log("Stamp Remove Rect (PDF Coords):", rect);
-
-                boxes = [{
-                    x: Math.floor(rect.x * scale),
-                    y: Math.floor(rect.y * scale),
-                    w: Math.floor(rect.w * scale),
-                    h: Math.floor(rect.h * scale)
-                }];
-                console.log("Stamp Remove Rect (Image Pixels):", boxes[0]);
+                const scale = 1.5; 
+                boxes = [{ x: Math.floor(rect.x * scale), y: Math.floor(rect.y * scale), w: Math.floor(rect.w * scale), h: Math.floor(rect.h * scale) }];
             } else {
-                // Auto-detect using Vision (Old Logic)
                 const autoBoxes = await detectStamps(imgBase64);
-                if (autoBoxes.length === 0) {
-                    setIsAIProcessing(false);
-                    setStatusMsg("AI: No stamps detected.");
-                    return;
-                }
-                // Map normalized 0-1 to pixels
-                const imgObj = new Image();
-                imgObj.src = imgBase64;
-                await imgObj.decode();
-                boxes = autoBoxes.map(b => ({
-                    x: Math.floor(b.x * imgObj.width),
-                    y: Math.floor(b.y * imgObj.height),
-                    w: Math.floor(b.width * imgObj.width),
-                    h: Math.floor(b.height * imgObj.height)
-                }));
+                if (autoBoxes.length === 0) { setIsAIProcessing(false); setStatusMsg("AI: No stamps detected."); return; }
+                const imgObj = new Image(); imgObj.src = imgBase64; await imgObj.decode();
+                boxes = autoBoxes.map(b => ({ x: Math.floor(b.x * imgObj.width), y: Math.floor(b.y * imgObj.height), w: Math.floor(b.width * imgObj.width), h: Math.floor(b.height * imgObj.height) }));
             }
-
-            // 3. Generate Mask (centralized helper supports pixel or normalized boxes)
             const maskBase64 = await generateMaskBase64(imgBase64, boxes);
-
-            // 4. Call Gemini Inpainting
             const cleanedImage = await removeStampWithMask(imgBase64, maskBase64);
-
             if (!cleanedImage) throw new Error("AI returned no image");
-
-            // 5. Replace PDF Page
             const newPdfBytes = await Edit.replacePageWithImage(file, pageNum - 1, cleanedImage);
             replaceFile(newPdfBytes, "cleaned.pdf");
-
-            setIsAIProcessing(false);
-            setStatusMsg("Cleaned Page Replaced ✨");
-            setMode('cursor');
-
-        } catch (e) {
-            console.error("Stamp Removal Error", e);
-            setIsAIProcessing(false);
-            setStatusMsg("AI Error: Removal Failed.");
-        }
+            setIsAIProcessing(false); setStatusMsg("Cleaned Page Replaced ✨"); setMode('cursor');
+        } catch (e) { console.error("Stamp Removal Error", e); setIsAIProcessing(false); setStatusMsg("AI Error: Removal Failed."); }
     };
 
+    // Handlers needed for children
     const handleCropApply = async (pageNum: number, rect: { x: number, y: number, w: number, h: number }) => {
         try {
             if (!file) return;
@@ -465,10 +337,7 @@ export const EditorPage: React.FC = () => {
             replaceFile(newBytes, 'cropped.pdf');
             setStatusMsg("Cropped! ✅");
             setMode('cursor');
-        } catch (e) {
-            console.error(e);
-            alert("Crop failed: " + (e as Error).message);
-        }
+        } catch (e) { console.error(e); alert("Crop failed"); }
     };
 
     const handleModalSubmit = async () => {
@@ -476,32 +345,23 @@ export const EditorPage: React.FC = () => {
             if (!file) return;
             let res: Uint8Array | null = null;
             let updateView = false;
-
             if (modal.type === 'split') {
                 if (!mInput1 || !mInput2) return alert("Enter pages!");
                 res = await Organize.splitPdf(file, Number(mInput1), Number(mInput2));
             } else if (modal.type === 'delete_page') {
                 const pagesToDelete = mInput1.split(',').map(n => parseInt(n.trim()));
-                res = await Organize.deletePages(file, pagesToDelete);
-                updateView = true;
+                res = await Organize.deletePages(file, pagesToDelete); updateView = true;
             } else if (modal.type === 'encrypt') {
                 res = await Security.encryptPdf(file, mInput1, settings.permissions);
             } else if (modal.type === 'watermark') {
-                res = await Edit.addWatermark(file, mInput1, drawColor);
-                updateView = true;
+                res = await Edit.addWatermark(file, mInput1, drawColor); updateView = true;
             } else if (modal.type === 'metadata') {
-                res = await Security.updateMetadata(file, { title: mInput1, author: mInput2 });
-                updateView = true;
+                res = await Security.updateMetadata(file, { title: mInput1, author: mInput2 }); updateView = true;
             } else if (modal.type === 'html_to_pdf') {
-                res = await Convert.htmlToPdf(htmlInput);
-                replaceFile(res, 'web_convert.pdf');
-                setModal({ type: null, isOpen: false });
-                return;
+                res = await Convert.htmlToPdf(htmlInput); replaceFile(res, 'web_convert.pdf'); setModal({ type: null, isOpen: false }); return;
             }
-
             if (res) {
-                if (updateView) { replaceFile(res); setStatusMsg("Applied! 👍"); }
-                else download(res, 'output.pdf');
+                if (updateView) { replaceFile(res); setStatusMsg("Applied! 👍"); } else download(res, 'output.pdf');
             }
             setModal({ type: null, isOpen: false });
         } catch (e) { console.error(e); alert('Error: ' + (e as Error).message); }
@@ -510,60 +370,29 @@ export const EditorPage: React.FC = () => {
     const handleExport = async (fileName: string, options: ExportOptions) => {
         try {
             if (!file) return;
-            setIsExportOpen(false);
-            setStatusMsg("Saving... 💾");
-
-            // 1. Convert dirty blocks to whiteout + text annotations
+            setIsExportOpen(false); setStatusMsg("Saving... 💾");
             const blockAnnotations: any[] = [];
             editableBlocks.filter(b => b.isDirty).forEach(block => {
-                // Whiteout the original area
-                blockAnnotations.push({
-                    id: `wo_${block.id}`,
-                    page: block.page,
-                    type: 'whiteout',
-                    x: block.x,
-                    y: block.y,
-                    width: block.width,
-                    height: block.height
-                });
-                // Add new text on top
-                blockAnnotations.push({
-                    id: `txt_${block.id}`,
-                    page: block.page,
-                    type: 'text',
-                    x: block.x,
-                    y: block.y,
-                    text: block.text,
-                    size: block.fontSize,
-                    fontFamily: block.fontFamily,
-                    color: '#000000'
-                });
+                blockAnnotations.push({ id: `wo_${block.id}`, page: block.page, type: 'whiteout', x: block.x, y: block.y, width: block.width, height: block.height });
+                blockAnnotations.push({ id: `txt_${block.id}`, page: block.page, type: 'text', x: block.x, y: block.y, text: block.text, size: block.fontSize, fontFamily: block.fontFamily, color: '#000000' });
             });
-
-            // Merge normal annotations + block overrides
             const allAnnotations = [...annotations, ...blockAnnotations];
-
             let finalBytes = await Edit.saveAnnotations(file, allAnnotations, pageRotations);
-
             if (options.password) {
                 const blob = new Blob([Buffer.from(finalBytes)], { type: 'application/pdf' });
                 const tempFile = new File([blob], fileName, { type: 'application/pdf' });
                 finalBytes = await Security.encryptPdf(tempFile, options.password, settings.permissions);
             }
             download(finalBytes, fileName);
-        } catch (e) {
-            console.error(e);
-            alert("Export failed: " + (e as Error).message);
-        }
+        } catch (e) { console.error(e); alert("Export failed: " + (e as Error).message); }
     };
 
     const handleFile = async (e: React.ChangeEvent<HTMLInputElement>, type: 'merge' | 'image' | 'word') => {
         const f = e.target.files?.[0];
         if (!f || !file) return;
-
         if (type === 'merge') {
             const res = await Organize.mergePdfs(file, f);
-            replaceFile(res, 'merged.pdf'); replaceFile(res, 'merged.pdf'); setStatusMsg("Merged! 🔗");
+            replaceFile(res, 'merged.pdf'); setStatusMsg("Merged! 🔗");
         } else if (type === 'word') {
             try {
                 setStatusMsg("Converting Word... 📄");
@@ -572,21 +401,49 @@ export const EditorPage: React.FC = () => {
             } catch (e) { alert("Conversion Failed"); }
         } else {
             const reader = new FileReader();
-            reader.onload = (ev) => {
-                setPendingImage(ev.target?.result as string); setMode('image'); setStatusMsg("Tap to place image 📍");
-            };
+            reader.onload = (ev) => { setPendingImage(ev.target?.result as string); setMode('image'); setStatusMsg("Tap to place image 📍"); };
             reader.readAsDataURL(f);
+        }
+    };
+
+    const handleCompareFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0];
+        if (f) {
+            setCompareFile(f);
+            setMode('compare');
+            setStatusMsg("Comparison Mode Active 👁️");
         }
     };
 
     const download = (data: Blob | Uint8Array, name: string) => {
         const blob = data instanceof Blob ? data : new Blob([Buffer.from(data as Uint8Array)]);
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url; link.download = name;
+        const link = document.createElement('a'); link.href = url; link.download = name;
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        setStatusMsg(`Saved ${name} 🎉`);
-        setTimeout(() => setStatusMsg(''), 3000);
+        setStatusMsg(`Saved ${name} 🎉`); setTimeout(() => setStatusMsg(''), 3000);
+    };
+
+    // Helper for Text/Ann Updates
+    const handleAnnotationSelect = (ann: any) => {
+        setSelectedAnnId(ann ? ann.id : null);
+        if (ann) {
+            if (ann.type === 'text') {
+                setTextStyle({ fontFamily: ann.fontFamily || 'Helvetica', isBold: !!ann.isBold, isItalic: !!ann.isItalic, isUnderline: !!ann.isUnderline, align: ann.align || 'left', size: ann.size || 14 });
+                setDrawColor(ann.color || '#000000');
+            } else if (ann.type === 'drawing') { setDrawColor(ann.color || '#000000'); setBrushSize(ann.thickness || 2); }
+        }
+    };
+    const handleTextStyleChange = (updater: any) => {
+        setTextStyle((prev: any) => {
+            const newState = typeof updater === 'function' ? updater(prev) : updater;
+            if (mode === 'cursor' && selectedAnnId && selectedAnnotation?.type === 'text') updateAnnotation(selectedAnnId, newState);
+            return newState;
+        });
+    };
+    const handlePageClick = (pageNum: number) => {
+        setActivePage(pageNum);
+        const el = document.getElementById(`page-wrapper-${pageNum}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
     if (isRestoring) {
@@ -594,88 +451,54 @@ export const EditorPage: React.FC = () => {
             <div className="h-screen w-screen flex flex-col items-center justify-center bg-background text-foreground">
                 <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
                 <h2 className="text-xl font-bold animate-pulse">Loading Workspace...</h2>
-                <p className="text-muted-foreground text-sm mt-2">Restoring your document</p>
             </div>
         );
     }
 
-    if (!file) return null;
-
     return (
-        <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden relative">
-            <input type="file" ref={mergeInputRef} className="hidden" accept=".pdf" onChange={e => handleFile(e, 'merge')} />
-            <input type="file" ref={imageInputRef} className="hidden" accept="image/*" onChange={e => handleFile(e, 'image')} />
-            <input type="file" ref={wordInputRef} className="hidden" accept=".docx,.pptx,.xlsx" onChange={e => handleFile(e, 'word')} />
+        <div className="flex flex-col h-screen w-full bg-background text-foreground">
+            {/* Hidden Inputs */}
+            <div style={{ display: 'none' }}>
+                <input type="file" ref={mergeInputRef} onChange={(e) => handleFile(e, 'merge')} accept="application/pdf" />
+                <input type="file" ref={imageInputRef} onChange={(e) => handleFile(e, 'image')} accept="image/*" />
+                <input type="file" ref={wordInputRef} onChange={(e) => handleFile(e, 'word')} accept=".docx,.doc,image/*" />
+                <input type="file" ref={compareInputRef} onChange={handleCompareFile} accept="application/pdf" />
+            </div>
 
-            {/* AI Processing Overlay */}
-            {isAIProcessing && (
-                <div className="absolute inset-0 z-[200] bg-background/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
-                    <div className="relative">
-                        <div className="w-24 h-24 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <Sparkles className="w-8 h-8 text-primary animate-pulse" />
-                        </div>
-                    </div>
-                    <h3 className="mt-8 text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-500 animate-pulse">
-                        Generative AI Processing
-                    </h3>
-                    <p className="text-muted-foreground mt-2">Scrubbing document and restructuring pixels...</p>
-                </div>
-            )}
-
-            {/* 1. HEADER */}
-            <div className="h-14 bg-white/60 dark:bg-black/60 backdrop-blur-xl border-b border-white/20 flex items-center px-4 justify-between shrink-0 z-40 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <button onClick={() => router.push('/')} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors"><ChevronLeft className="w-5 h-5" /></button>
-                    <div className="flex flex-col">
-                        <span className="text-sm font-bold truncate max-w-[150px] md:max-w-xs leading-none">{file.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{numPages} Pages</span>
-                    </div>
+            {/* Header */}
+            <div className="h-14 border-b border-border flex items-center justify-between px-4 bg-background/50 backdrop-blur-md">
+                <div className="flex items-center gap-4">
+                    <button onClick={() => router.push('/')} className="hover:bg-muted p-2 rounded-full"><ChevronLeft className="w-5 h-5" /></button>
+                    <div className="flex items-center gap-2 font-bold text-lg"><span className="text-primary">ExtraPDF</span> <span>Editor</span></div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => setThumbnailsOpen(!isThumbnailsOpen)} className="hidden md:block p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10" title="Toggle Page Thumbnails">
-                        {isThumbnailsOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-                    </button>
-                    <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10">
-                        <Menu className="w-5 h-5" />
-                    </button>
+                    <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="md:hidden p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/10"><Menu className="w-5 h-5" /></button>
                     <button onClick={() => setIsSettingsOpen(true)} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full"><Settings2 className="w-5 h-5" /></button>
                 </div>
             </div>
 
-            {/* 2. MAIN WORKSPACE */}
+            {/* Main Workspace */}
             <div className="flex-1 flex overflow-hidden relative">
 
                 {/* Tools Sidebar */}
-                <div className={`
-                absolute md:static inset-y-0 left-0 z-50
-                bg-background/95 backdrop-blur-xl border-r border-border
-                transition-transform duration-300 ease-in-out
-                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-auto'}
-                h-full flex flex-col shadow-2xl md:shadow-none
-            `}>
-                    <EditorSidebar
-                        activeCategory={activeCategory} setActiveCategory={setActiveCategory}
-                        activeToolId={mode} onToolSelect={handleToolSelect}
-                    />
+                <div className={`absolute md:static inset-y-0 left-0 z-50 bg-background/95 backdrop-blur-xl border-r border-border transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0 md:w-auto'} h-full flex flex-col shadow-2xl md:shadow-none`}>
+                    <EditorSidebar activeCategory={activeCategory} setActiveCategory={setActiveCategory} activeToolId={mode} onToolSelect={handleToolSelect} />
                 </div>
 
-                {/* Thumbnails Sidebar (Desktop) */}
-                <div className={`
-                hidden md:block transition-all duration-300 overflow-hidden bg-muted/20 border-r border-border
-                ${isThumbnailsOpen ? 'w-32 opacity-100' : 'w-0 opacity-0'}
-            `}>
-                    <ThumbnailSidebar onPageClick={handlePageClick} currentPageView={activePage} />
-                </div>
+                {/* Thumbnails */}
+                {mode !== 'compare' && (
+                    <div className={`hidden md:block transition-all duration-300 overflow-hidden bg-muted/20 border-r border-border ${isThumbnailsOpen ? 'w-32 opacity-100' : 'w-0 opacity-0'}`}>
+                        <ThumbnailSidebar onPageClick={handlePageClick} currentPageView={activePage} />
+                    </div>
+                )}
 
                 {/* Editor Content */}
                 <div className="flex-1 flex flex-col min-w-0 bg-muted/20 relative">
-                    <EditorToolbar
+                    <EditorToolbar 
                         mode={mode} selectedAnnotationType={selectedAnnotation ? (selectedAnnotation.type as any) : null}
                         zoom={zoom} setZoom={setZoom}
-                        onAction={(a) => { if (a === 'merge_add') mergeInputRef.current?.click(); if (a === 'toggle_ai') setIsThinkingOpen(!isThinkingOpen); }}
-                        onExport={() => setIsExportOpen(true)}
-                        status={statusMsg}
+                        onAction={(a) => { if (a === 'merge_add') mergeInputRef.current?.click(); if (a === 'toggle_ai') setIsThinkingOpen(!isThinkingOpen); }} 
+                        onExport={() => setIsExportOpen(true)} status={statusMsg}
                         drawColor={drawColor} setDrawColor={(c) => { setDrawColor(c); if (mode === 'cursor' && selectedAnnId) updateAnnotation(selectedAnnId, { color: c }); }}
                         brushSize={brushSize} setBrushSize={(s) => { setBrushSize(s); if (mode === 'cursor' && selectedAnnId) updateAnnotation(selectedAnnId, { thickness: s, size: s }); }}
                         textStyle={textStyle} setTextStyle={handleTextStyleChange}
@@ -684,58 +507,50 @@ export const EditorPage: React.FC = () => {
                     <div className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth bg-zinc-100 dark:bg-zinc-900/50" ref={scrollContainerRef}>
                         <div className="min-h-full flex flex-col items-center justify-start pb-20">
                             {mode === 'image' && pendingImage && (
-                                <div className="sticky top-4 z-50 bg-primary text-white text-xs px-4 py-2 rounded-full shadow-lg animate-bounce pointer-events-none mb-4">
-                                    Tap on document to drop image 📍
-                                </div>
+                                <div className="sticky top-4 z-50 bg-primary text-white text-xs px-4 py-2 rounded-full shadow-lg animate-bounce pointer-events-none mb-4">Tap on document to drop image 📍</div>
                             )}
-                            <PDFCanvas
-                                zoom={zoom} setZoom={setZoom} mode={mode}
-                                activePage={activePage} onPageSelect={setActivePage}
-                                pendingImage={pendingImage} onImagePlaced={() => { setMode('cursor'); setPendingImage(null); }}
-                                drawColor={drawColor} brushSize={brushSize} textStyle={textStyle}
-                                onStampRemove={handleStampRemove}
-                                onAnnotationSelect={handleAnnotationSelect}
-                                onCropApply={handleCropApply}
-                            />
+
+                            {/* Compare Mode Split View */}
+                            {mode === 'compare' && compareFile ? (
+                                <div className="flex w-full h-[85vh] gap-4">
+                                    <div className="flex-1 border rounded-lg overflow-hidden bg-white/50 relative shadow-inner">
+                                        <div className="absolute top-2 left-2 z-10 bg-black/50 text-white px-2 rounded text-xs">Original</div>
+                                        <PDFCanvas zoom={zoom} setZoom={setZoom} mode={mode} activePage={activePage} onPageSelect={setActivePage} pendingImage={null} onImagePlaced={() => { }} drawColor={drawColor} brushSize={brushSize} textStyle={textStyle} onStampRemove={() => { }} onAnnotationSelect={() => { }} onCropApply={() => { }} />
+                                    </div>
+                                    <div className="flex-1 border rounded-lg overflow-hidden bg-white/50 relative shadow-inner">
+                                        <div className="absolute top-0 left-0 w-full h-10 bg-background border-b flex items-center justify-between px-4 z-10">
+                                            <span className="font-bold text-xs truncate max-w-[200px]">{compareFile.name} (Preview)</span>
+                                            <button onClick={() => { setMode('cursor'); setCompareFile(null); }} className="text-destructive text-xs font-bold hover:bg-destructive/10 px-2 py-1 rounded">Close</button>
+                                        </div>
+                                        <div className="w-full h-full pt-10">
+                                            <iframe src={URL.createObjectURL(compareFile)} className="w-full h-full border-none" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <PDFCanvas
+                                    zoom={zoom} setZoom={setZoom} mode={mode}
+                                    activePage={activePage} onPageSelect={setActivePage}
+                                    pendingImage={pendingImage} onImagePlaced={() => { setMode('cursor'); setPendingImage(null); }}
+                                    drawColor={drawColor} brushSize={brushSize} textStyle={textStyle}
+                                    onStampRemove={handleStampRemove}
+                                    onAnnotationSelect={handleAnnotationSelect}
+                                    onCropApply={handleCropApply}
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
 
-            <ThinkingSidebar
-                isOpen={isThinkingOpen}
-                onClose={() => setIsThinkingOpen(false)}
-                messages={chatMessages}
-                isThinking={isThinking}
-                onSendMessage={handleChatSendMessage}
-            />
-
-            <ReorderDialog
-                isOpen={modal.type === 'reorder'}
-                onClose={() => setModal({ type: null, isOpen: false })}
-                pageCount={numPages}
-                onApply={async (order) => {
-                    try {
-                        setIsAIProcessing(true);
-                        const newBytes = await Organize.reorderPages(file, order);
-                        replaceFile(newBytes, 'reordered.pdf');
-                        setStatusMsg("Pages Reordered 📑");
-                    } catch (e) {
-                        alert("Reorder Failed: " + (e as Error).message);
-                    } finally {
-                        setIsAIProcessing(false);
-                        setModal({ type: null, isOpen: false });
-                    }
-                }}
-            />
-            <ExportDialog isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} onExport={handleExport} defaultFileName={file.name.replace('.pdf', '')} />
+            <ThinkingSidebar isOpen={isThinkingOpen} onClose={() => setIsThinkingOpen(false)} messages={chatMessages} isThinking={isThinking} onSendMessage={handleChatSendMessage} />
+            <ReorderDialog isOpen={modal.type === 'reorder'} onClose={() => setModal({ type: null, isOpen: false })} pageCount={numPages} onApply={async (order) => { try { setIsAIProcessing(true); const newBytes = await Organize.reorderPages(file!, order); replaceFile(newBytes, 'reordered.pdf'); setStatusMsg("Pages Reordered 📑"); } catch (e) { alert("Reorder Failed"); } finally { setIsAIProcessing(false); setModal({ type: null, isOpen: false }); } }} />
+            <ExportDialog isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} onExport={handleExport} defaultFileName={file?.name.replace('.pdf', '') || 'doc'} />
             <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
-            {/* Modals */}
             {modal.isOpen && modal.type !== 'reorder' && (
                 <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
                     <div className="bg-background rounded-3xl shadow-2xl w-full max-w-sm p-6 animate-in zoom-in-95 border border-border">
-                        {/* Dynamic Modal Content */}
                         <div className="mb-4">
                             <h3 className="text-xl font-bold capitalize flex items-center gap-2">
                                 {modal.type === 'watermark' && <Stamp className="w-5 h-5 text-primary" />}
@@ -744,7 +559,6 @@ export const EditorPage: React.FC = () => {
                                 {modal.type?.replace('_', ' ')}
                             </h3>
                         </div>
-
                         {modal.type === 'split' && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">Enter the page range to extract (e.g., 1 to 5).</p>
@@ -754,57 +568,37 @@ export const EditorPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
-
                         {modal.type === 'delete_page' && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">Enter page numbers to delete, separated by commas (e.g., 1, 3, 5).</p>
                                 <input type="text" placeholder="1, 3, 5" value={mInput1} onChange={e => setMInput1(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" />
                             </div>
                         )}
-
                         {modal.type === 'encrypt' && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">Set a password to protect this document.</p>
                                 <input type="password" placeholder="Password" value={mInput1} onChange={e => setMInput1(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" />
                             </div>
                         )}
-
                         {modal.type === 'watermark' && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">Enter text for the watermark stamp.</p>
                                 <input type="text" placeholder="CONFIDENTIAL" value={mInput1} onChange={e => setMInput1(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" />
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-medium">Color:</span>
-                                    <input type="color" value={drawColor} onChange={e => setDrawColor(e.target.value)} className="h-8 w-16 rounded cursor-pointer" />
-                                </div>
+                                <div className="flex items-center gap-2"><span className="text-xs font-medium">Color:</span><input type="color" value={drawColor} onChange={e => setDrawColor(e.target.value)} className="h-8 w-16 rounded cursor-pointer" /></div>
                             </div>
                         )}
-
                         {modal.type === 'metadata' && (
                             <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase">Title</label>
-                                    <input type="text" placeholder="Document Title" value={mInput1} onChange={e => setMInput1(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase">Author</label>
-                                    <input type="text" placeholder="Author Name" value={mInput2} onChange={e => setMInput2(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" />
-                                </div>
+                                <div className="space-y-2"><label className="text-xs font-bold text-muted-foreground uppercase">Title</label><input type="text" placeholder="Document Title" value={mInput1} onChange={e => setMInput1(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" /></div>
+                                <div className="space-y-2"><label className="text-xs font-bold text-muted-foreground uppercase">Author</label><input type="text" placeholder="Author Name" value={mInput2} onChange={e => setMInput2(e.target.value)} className="w-full bg-muted p-2 rounded-lg border border-input" /></div>
                             </div>
                         )}
-
                         {modal.type === 'html_to_pdf' && (
                             <div className="space-y-4">
                                 <p className="text-sm text-muted-foreground">Paste HTML code to convert to PDF.</p>
-                                <textarea
-                                    value={htmlInput}
-                                    onChange={e => setHtmlInput(e.target.value)}
-                                    placeholder="<h1>Hello World</h1>"
-                                    className="w-full h-32 bg-muted p-2 rounded-lg border border-input font-mono text-xs"
-                                />
+                                <textarea value={htmlInput} onChange={e => setHtmlInput(e.target.value)} placeholder="<h1>Hello World</h1>" className="w-full h-32 bg-muted p-2 rounded-lg border border-input font-mono text-xs" />
                             </div>
                         )}
-
                         <div className="flex justify-end gap-2 mt-6">
                             <button onClick={() => setModal({ type: null, isOpen: false })} className="px-4 py-2 rounded-lg hover:bg-muted font-medium text-sm transition-colors">Cancel</button>
                             <button onClick={handleModalSubmit} className="px-6 py-2 bg-primary text-white rounded-lg shadow-lg shadow-primary/20 text-sm font-bold hover:scale-105 transition-transform">Apply</button>

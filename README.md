@@ -18,6 +18,7 @@ ExtraPDF is a powerful, next-generation PDF editor built with Next.js, AI (Gemin
 - **Whiteout/Redact**: Cover sensitive information or remove artifacts.
 - **Crop**: Crop pages to focus on specific content.
 - **Stamp/Watermark**: Add custom stamps or watermarks to your pages.
+- **Undo/Redo**: Mistake? No problem. Undo up to 30 actions with `Ctrl+Z` / `Ctrl+Y`.
 - **AI Stamp Remover**: Magically remove unwanted stamps or logos using AI vision.
 
 #### **Organize PDF**
@@ -39,6 +40,7 @@ ExtraPDF is a powerful, next-generation PDF editor built with Next.js, AI (Gemin
 - **OCR**: Optical Character Recognition to extract text from scanned images.
 
 #### **Security**
+- **Compare**: Side-by-side comparison of two PDF documents to spot differences.
 - **Encrypt/Protect**: detailed password protection and permissions.
 - **Unlock**: Remove passwords from files you have access to.
 - **Flatten**: Merge annotations and form fields into the base layer.
@@ -59,6 +61,9 @@ Accelerate your workflow with global hotkeys:
 - `C`: AI Stamp Clean
 - `O`: Reorder Pages
 - `Alt + P`: Split
+- `Ctrl + Z`: Undo
+- `Ctrl + Y`: Redo
+- `Compare Mode`: Select "Compare" from Security menu to activate Split View.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
