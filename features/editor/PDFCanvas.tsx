@@ -49,6 +49,8 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
   const [currentPath, setCurrentPath] = useState<{x: number, y: number}[]>([]);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, id: string | null, type: any } | null>(null);
 
+    const placingImageRef = useRef(false);
+
   // Pinch Zoom Refs
   const initialTouchDist = useRef<number>(0);
   const initialZoom = useRef<number>(1);
@@ -211,6 +213,9 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
         setEditingId(Date.now().toString());
     } else if (mode === 'image' && pendingImage && onImagePlaced) {
         // Place Image
+        if (placingImageRef.current) return;
+        placingImageRef.current = true;
+
         const img = new Image();
         img.onload = () => {
             addAnnotation({
@@ -219,6 +224,8 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                 dataUrl: pendingImage
             });
             onImagePlaced();
+            // Reset after a short delay to be safe, though mode switch usually handles it
+            setTimeout(() => { placingImageRef.current = false; }, 500);
         };
         img.src = pendingImage;
     }

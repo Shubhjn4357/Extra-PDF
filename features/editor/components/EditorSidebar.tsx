@@ -84,7 +84,7 @@ export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiv
         <div className="w-10 h-px bg-white/20 my-2" />
 
         {/* Tools in Category */}
-        <div className={`flex-1 w-full flex flex-col overflow-y-auto px-2 no-scrollbar ${isCompact ? 'gap-1' : 'gap-2'}`}>
+          <div className={`flex-1 w-full flex flex-col overflow-y-auto px-2 pb-20 no-scrollbar ${isCompact ? 'gap-1' : 'gap-2'}`}>
             {toolsList.filter(t => t.category === activeCategory).map(tool => (
                 <button
                     key={tool.id}
