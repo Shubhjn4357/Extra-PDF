@@ -46,6 +46,9 @@ export const LandingPage: React.FC = () => {
                 }
 
                 setFile(file);
+                // Fix: Persist immediately
+                await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
+
                 router.push('/editor/cursor');
                 return;
             }
@@ -57,8 +60,14 @@ export const LandingPage: React.FC = () => {
                     ? imageFiles[0].name.replace(/\.[^/.]+$/, "") + ".pdf"
                     : "images_bundle.pdf";
 
-                const newFile = new File([pdfBytes as any], fileName, { type: 'application/pdf' });
+                // Fix: Properly handle Blob/File creation without 'any'
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const newFile = new File([blob], fileName, { type: 'application/pdf' });
+
                 setFile(newFile);
+                // Fix: Persist immediately to avoid race condition on router push
+                await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
+
                 router.push('/editor/cursor');
                 return;
             }

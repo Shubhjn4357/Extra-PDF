@@ -26,10 +26,12 @@ export const toolsList: Tool[] = [
     { id: 'rotate', label: 'Rotate', icon: RotateCw, category: 'organize', description: 'Rotate Page' },
     { id: 'delete_page', label: 'Delete', icon: Trash, category: 'organize', description: 'Remove Page', requiresModal: true },
     { id: 'page_numbers', label: 'Numbers', icon: Hash, category: 'organize', description: 'Add Footer' },
+    { id: 'repair', label: 'Repair', icon: Wand2, category: 'organize', description: 'Fix PDF' },
+    { id: 'compress', label: 'Compress', icon: FileMinus, category: 'organize', description: 'Reduce Size' }, // New
 
     // EDIT
     { id: 'cursor', label: 'Select', icon: MousePointer, category: 'edit', description: 'Select' },
-    { id: 'edit_text', label: 'Edit Text', icon: FileText, category: 'edit', description: 'Edit Existing' }, // NEW
+    { id: 'edit_text', label: 'Edit Text', icon: FileText, category: 'edit', description: 'Edit Existing' },
     { id: 'text', label: 'Add Text', icon: Type, category: 'edit', description: 'Add Text' },
     { id: 'draw', label: 'Draw', icon: PenLine, category: 'edit', description: 'Freehand' },
     { id: 'eraser', label: 'Eraser', icon: Eraser, category: 'edit', description: 'Delete Drawing' },
@@ -37,15 +39,24 @@ export const toolsList: Tool[] = [
     { id: 'add_image', label: 'Image', icon: ImageIcon, category: 'edit', description: 'Add Image' },
     { id: 'watermark', label: 'Stamp', icon: Stamp, category: 'edit', description: 'Watermark', requiresModal: true },
     { id: 'stamp_remover', label: 'Clean AI', icon: Wand2, category: 'edit', description: 'Remove Stamp' },
+    { id: 'crop', label: 'Crop', icon: Scissors, category: 'edit', description: 'Crop Page' }, // New
+    { id: 'redact', label: 'Redact', icon: Eraser, category: 'edit', description: 'Blackout' }, // New
+    { id: 'sign', label: 'Sign', icon: PenLine, category: 'edit', description: 'Signature' }, // New
 
     // SECURITY
-    { id: 'encrypt', label: 'Encrypt', icon: Shield, category: 'security', description: 'Password', requiresModal: true },
+    { id: 'encrypt', label: 'Protect', icon: Shield, category: 'security', description: 'Password', requiresModal: true },
+    { id: 'unlock', label: 'Unlock', icon: Shield, category: 'security', description: 'Remove Password', requiresModal: true }, // New (Alias to Encrypt logic but explicit)
     { id: 'flatten', label: 'Flatten', icon: Layers, category: 'security', description: 'Flatten' },
     { id: 'metadata', label: 'Meta', icon: Info, category: 'security', description: 'Metadata', requiresModal: true },
+    { id: 'compare', label: 'Compare', icon: FileStack, category: 'security', description: 'Side by Side' }, // New
 
     // CONVERT
     { id: 'pdf_to_word', label: 'Word', icon: FileImage, category: 'convert', description: 'To DOCX' },
     { id: 'pdf_to_jpg', label: 'JPG', icon: FileOutput, category: 'convert', description: 'To Images' },
+    { id: 'pdf_to_ppt', label: 'PPT', icon: FileOutput, category: 'convert', description: 'To PowerPoint' }, // New
+    { id: 'pdf_to_excel', label: 'Excel', icon: FileOutput, category: 'convert', description: 'To Excel' }, // New
+    { id: 'ocr_pdf', label: 'OCR', icon: Type, category: 'convert', description: 'Extract Text' }, // New
+    { id: 'html_to_pdf', label: 'HTML', icon: FileText, category: 'convert', description: 'Web to PDF', requiresModal: true }, // Existed but hidden?
 ];
 
 export const EditorSidebar: React.FC<SidebarProps> = ({ activeCategory, setActiveCategory, activeToolId, onToolSelect }) => {

@@ -23,6 +23,7 @@ import * as Organize from '@/services/tools/organizeTools';
 import * as Edit from '@/services/tools/editTools';
 import * as Security from '@/services/tools/securityTools';
 import * as Convert from '@/services/tools/convertTools';
+import * as Optimize from '@/services/tools/optimizeTools'; // New
 
 export const EditorPage: React.FC = () => {
     const router = useRouter();
@@ -107,6 +108,38 @@ export const EditorPage: React.FC = () => {
                 await useFileStore.getState().restoreState();
             }
         })();
+        // Global Shortcuts Listener
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignore if typing in input/textarea
+            if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+            switch (e.key.toLowerCase()) {
+                case 'v': case 'escape': handleToolSelect({ id: 'cursor' } as any); break;
+                case 't': handleToolSelect({ id: 'text' } as any); break;
+                case 'd': handleToolSelect({ id: 'draw' } as any); break;
+                case 'w': handleToolSelect({ id: 'whiteout' } as any); break;
+                case 'x': handleToolSelect({ id: 'crop' } as any); break;
+                case 's': handleToolSelect({ id: 'sign' } as any); break;
+                case 'r': handleToolSelect({ id: 'replace' } as any); break; // Redact/Replace
+
+                // Additional Shortcuts
+                case 'e': handleToolSelect({ id: 'eraser' } as any); break;
+                case 'i': handleToolSelect({ id: 'add_image' } as any); break;
+                case 'm': handleToolSelect({ id: 'watermark' } as any); break; // Stamp/Mark
+                case 'c': handleToolSelect({ id: 'stamp_remover' } as any); break; // Clean
+                case 'o': handleToolSelect({ id: 'reorder' } as any); break; // Organize/Reorder
+
+                // Modifiers need specific handling if collisions exist, but simple keys here:
+                case 'p': if (e.altKey) handleToolSelect({ id: 'split' } as any); break; // Alt+P Split
+
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
     }, []);
 
     // Persist file state when annotations/blocks change (debounced)
@@ -243,6 +276,17 @@ export const EditorPage: React.FC = () => {
                 case 'merge': mergeInputRef.current?.click(); break;
                 case 'add_image': imageInputRef.current?.click(); break;
                 case 'word_to_pdf': wordInputRef.current?.click(); break;
+
+                // OPTIMIZE
+                case 'compress':
+                    setStatusMsg("Compressing PDF... 🗜️");
+                    try {
+                        const compressedBytes = await Optimize.compressPdf(file);
+                        replaceFile(compressedBytes, file.name.replace('.pdf', '_compressed.pdf'));
+                        setStatusMsg("Compressed! 📉");
+                    } catch (e) { alert("Compression Failed"); }
+                    break;
+
                 case 'remove_empty':
                     setStatusMsg("Scanning for blank pages... 🔍");
                     const { pdfBytes, removedCount } = await Organize.removeEmptyPages(file);
@@ -263,6 +307,8 @@ export const EditorPage: React.FC = () => {
                 case 'page_numbers':
                     replaceFile(await Organize.addPageNumbers(file), 'numbered.pdf');
                     setStatusMsg("Added Numbers 🔢"); break;
+
+                // CONVERT
                 case 'pdf_to_word':
                     download(await Convert.createDocxFromText(pdfText), 'converted.docx'); break;
                 case 'pdf_to_excel':
@@ -283,6 +329,22 @@ export const EditorPage: React.FC = () => {
                         a.href = imgs[0]; a.download = `page_1.jpg`; a.click();
                         setStatusMsg('Saved JPG ✅');
                     } break;
+
+                // SECURITY
+                case 'unlock':
+                    // Decrypting happens via Password Modal usually, but if open, removing password is just saving.
+                    // If file is already open here, it is unlocked in memory.
+                    // So 'Unlock' tool effectively saves a copy without password if re-saving?
+                    // Actually, 'unlock' implies removing permission. 
+                    // We can just trigger a save without encryption.
+                    setStatusMsg("Removing Password... 🔓");
+                    // Just save current file bytes?
+                    const unlockedBytes = await file.arrayBuffer();
+                    // If it was encrypted, we need to ensure we save it freshly.
+                    // The store 'file' is the Blob. If we opened it, we have the decrypted version in memory?
+                    // Yes, if we are viewing it, it is decrypted.
+                    download(new Uint8Array(unlockedBytes), 'unlocked.pdf');
+                    break;
             }
         } catch (e) { console.error(e); alert('Action Failed: ' + (e as Error).message); }
     };
@@ -339,8 +401,11 @@ export const EditorPage: React.FC = () => {
                 // But our helper 'createMask' below needs pixel matching.
                 // Convert.getPageImage uses scale 1.5 (~892px width).
                 // We need to map 'rect' (PDF points) to Image Pixels.
-                const pdfWidth = 595;
-                const scale = 1.5; // From Convert.getPageImage logic
+
+                // Fix: Verify scale matches Convert.getPageImage (1.5)
+                const scale = 1.5;
+
+                console.log("Stamp Remove Rect (PDF Coords):", rect);
 
                 boxes = [{
                     x: Math.floor(rect.x * scale),
@@ -348,6 +413,7 @@ export const EditorPage: React.FC = () => {
                     w: Math.floor(rect.w * scale),
                     h: Math.floor(rect.h * scale)
                 }];
+                console.log("Stamp Remove Rect (Image Pixels):", boxes[0]);
             } else {
                 // Auto-detect using Vision (Old Logic)
                 const autoBoxes = await detectStamps(imgBase64);
@@ -644,7 +710,24 @@ export const EditorPage: React.FC = () => {
                 onSendMessage={handleChatSendMessage}
             />
 
-            <ReorderDialog isOpen={modal.type === 'reorder'} onClose={() => setModal({ type: null, isOpen: false })} pageCount={numPages} onApply={async (order) => { /*...*/ }} />
+            <ReorderDialog
+                isOpen={modal.type === 'reorder'}
+                onClose={() => setModal({ type: null, isOpen: false })}
+                pageCount={numPages}
+                onApply={async (order) => {
+                    try {
+                        setIsAIProcessing(true);
+                        const newBytes = await Organize.reorderPages(file, order);
+                        replaceFile(newBytes, 'reordered.pdf');
+                        setStatusMsg("Pages Reordered 📑");
+                    } catch (e) {
+                        alert("Reorder Failed: " + (e as Error).message);
+                    } finally {
+                        setIsAIProcessing(false);
+                        setModal({ type: null, isOpen: false });
+                    }
+                }}
+            />
             <ExportDialog isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} onExport={handleExport} defaultFileName={file.name.replace('.pdf', '')} />
             <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 

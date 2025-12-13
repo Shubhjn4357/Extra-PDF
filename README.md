@@ -1,20 +1,67 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ExtraPDF - Contextual Intelligence AI PDF Editor
 
-# Run and deploy your AI Studio app
+ExtraPDF is a powerful, next-generation PDF editor built with Next.js, AI (Gemini), and advanced client-side PDF processing. It provides a suite of tools for editing, organizing, converting, and securing your documents, wrapped in a beautiful, fluid UI.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1qpxHMgCjlQWwr0LnSPZmEutpfCVrw3cB
+### 🧠 contextual Intelligence
+- **AI Chat**: Chat with your document. Ask for summaries, clarifications, or specific edits.
+- **Smart Tools**: The AI understands your intent. Ask it to "remove the stamp on page 5" or "rotate all pages", and it will execute the tool for you.
 
-## Run Locally
+### 🛠️ Full Tool Suite
 
-**Prerequisites:**  Node.js
+#### **Edit PDF**
+- **Add Text**: Insert custom text with font selection, sizing, and styling.
+- **Edit Text**: Modify existing text blocks directly (OCR supported).
+- **Draw & Sign**: Freehand drawing tool and dedicated signature mode.
+- **Whiteout/Redact**: Cover sensitive information or remove artifacts.
+- **Crop**: Crop pages to focus on specific content.
+- **Stamp/Watermark**: Add custom stamps or watermarks to your pages.
+- **AI Stamp Remover**: Magically remove unwanted stamps or logos using AI vision.
 
+#### **Organize PDF**
+- **Merge**: Combine multiple PDFs into one.
+- **Split**: Extract specific page ranges into new files.
+- **Reorder**: Drag and drop pages to rearrange.
+- **Rotate**: Rotate individual pages or the entire document.
+- **Delete**: Remove unwanted pages.
+- **Remove Empty**: Automatically detect and delete blank pages.
+- **Compress**: Optimize file size for sharing.
+- **Repair**: Fix corrupted PDF structures.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+#### **Convert PDF**
+- **PDF to Word (DOCX)**: Extract text and preserve basic structure.
+- **PDF to Excel (XLSX)**: Detect tables and export to spreadsheets.
+- **PDF to PowerPoint (PPTX)**: Convert pages to presentation slides.
+- **PDF to JPG**: specific pages as high-quality images.
+- **HTML to PDF**: Convert web content code to PDF.
+- **OCR**: Optical Character Recognition to extract text from scanned images.
+
+#### **Security**
+- **Encrypt/Protect**: detailed password protection and permissions.
+- **Unlock**: Remove passwords from files you have access to.
+- **Flatten**: Merge annotations and form fields into the base layer.
+- **Metadata**: Edit title, author, and other document properties.
+
+## Keyboard Shortcuts
+Accelerate your workflow with global hotkeys:
+- `V` / `Esc`: Select (Cursor)
+- `T`: Add TextTool
+- `D`: Draw Mode
+- `W`: Whiteout
+- `S`: Sign Mode
+- `X`: Crop Mode
+- `R`: Redact/Replace
+- `E`: Eraser
+- `I`: Add Image
+- `M`: Watermark
+- `C`: AI Stamp Clean
+- `O`: Reorder Pages
+- `Alt + P`: Split
+
+## Tech Stack
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: TailwindCSS + Framer Motion
+- **PDF Core**: `react-pdf`, `pdf-lib`
+- **AI**: Google Gemini Pro Vision
+- **State**: Zustand + IndexedDB

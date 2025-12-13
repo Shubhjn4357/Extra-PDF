@@ -77,9 +77,10 @@ export const decryptPdf = async (file: File, password: string): Promise<File> =>
         const pdfDoc = await PDFDocument.load(arrayBuffer, { password } as any);
         // Save without any encryption settings (removes it)
         const decryptedBytes = await pdfDoc.save();
+        const blob = new Blob([decryptedBytes], { type: 'application/pdf' });
 
         return new File(
-            [decryptedBytes as any],
+            [blob],
             file.name.replace('.pdf', '_decrypted.pdf'),
             { type: 'application/pdf' }
         );
