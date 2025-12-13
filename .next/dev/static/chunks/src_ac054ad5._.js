@@ -539,7 +539,26 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$storage$2
 ;
 ;
 ;
-const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$zustand$40$5$2e$0$2e$9_$40$types$2b$react$40$19$2e$2$2e$7_react$40$19$2e$2$2e$3$2f$node_modules$2f$zustand$2f$esm$2f$react$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["create"])((set, get)=>({
+const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$zustand$40$5$2e$0$2e$9_$40$types$2b$react$40$19$2e$2$2e$7_react$40$19$2e$2$2e$3$2f$node_modules$2f$zustand$2f$esm$2f$react$2e$mjs__$5b$app$2d$client$5d$__$28$ecmascript$29$__["create"])((set, get)=>{
+    const addToHistory = ()=>{
+        const { annotations, editableBlocks, pageRotations, pdfText, history } = get();
+        // Limit to 30
+        const newHistory = [
+            ...history,
+            {
+                annotations,
+                editableBlocks,
+                pageRotations,
+                pdfText
+            }
+        ];
+        if (newHistory.length > 30) newHistory.shift();
+        set({
+            history: newHistory,
+            future: []
+        });
+    };
+    return {
         file: null,
         fileName: null,
         pdfText: "",
@@ -548,6 +567,52 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
         numPages: 0,
         pageRotations: {},
         isRestoring: true,
+        history: [],
+        future: [],
+        undo: ()=>{
+            const { history, future, annotations, editableBlocks, pageRotations, pdfText } = get();
+            if (history.length === 0) return;
+            const prev = history[history.length - 1];
+            const newFuture = [
+                {
+                    annotations,
+                    editableBlocks,
+                    pageRotations,
+                    pdfText
+                },
+                ...future
+            ];
+            set({
+                annotations: prev.annotations,
+                editableBlocks: prev.editableBlocks,
+                pageRotations: prev.pageRotations,
+                pdfText: prev.pdfText,
+                history: history.slice(0, -1),
+                future: newFuture
+            });
+        },
+        redo: ()=>{
+            const { history, future, annotations, editableBlocks, pageRotations, pdfText } = get();
+            if (future.length === 0) return;
+            const next = future[0];
+            const newHistory = [
+                ...history,
+                {
+                    annotations,
+                    editableBlocks,
+                    pageRotations,
+                    pdfText
+                }
+            ];
+            set({
+                annotations: next.annotations,
+                editableBlocks: next.editableBlocks,
+                pageRotations: next.pageRotations,
+                pdfText: next.pdfText,
+                future: future.slice(1),
+                history: newHistory
+            });
+        },
         setFile: (file)=>set({
                 file,
                 fileName: file?.name || null,
@@ -555,7 +620,9 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 editableBlocks: [],
                 pageRotations: {},
                 pdfText: "",
-                isRestoring: false
+                isRestoring: false,
+                history: [],
+                future: []
             }),
         replaceFile: (newFileBytes, name)=>{
             const currentFile = get().file;
@@ -576,50 +643,72 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 annotations: [],
                 editableBlocks: [],
                 pageRotations: {},
-                pdfText: ""
+                pdfText: "",
+                history: [],
+                future: []
             });
-            // persist updated file bytes
             try {
                 (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$storage$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["saveFileToIDB"])('lastFile', newFileBytes, newName);
             } catch (e) {}
         },
-        setPdfText: (text)=>set({
+        setPdfText: (text)=>{
+            addToHistory();
+            set({
                 pdfText: text
-            }),
-        addAnnotation: (ann)=>set((state)=>({
+            });
+        },
+        addAnnotation: (ann)=>{
+            addToHistory();
+            set((state)=>({
                     annotations: [
                         ...state.annotations,
                         ann
                     ]
-                })),
-        updateAnnotation: (id, val)=>set((state)=>({
+                }));
+        },
+        updateAnnotation: (id, val)=>{
+            addToHistory();
+            set((state)=>({
                     annotations: state.annotations.map((a)=>a.id === id ? {
                             ...a,
                             ...val
                         } : a)
-                })),
-        removeAnnotation: (id)=>set((state)=>({
+                }));
+        },
+        removeAnnotation: (id)=>{
+            addToHistory();
+            set((state)=>({
                     annotations: state.annotations.filter((a)=>a.id !== id)
-                })),
-        updateBlock: (id, val)=>set((state)=>({
+                }));
+        },
+        updateBlock: (id, val)=>{
+            addToHistory();
+            set((state)=>({
                     editableBlocks: state.editableBlocks.map((b)=>b.id === id ? {
                             ...b,
                             ...val,
                             isDirty: true
                         } : b)
-                })),
-        deleteBlock: (id)=>set((state)=>({
+                }));
+        },
+        deleteBlock: (id)=>{
+            addToHistory();
+            set((state)=>({
                     editableBlocks: state.editableBlocks.filter((b)=>b.id !== id)
-                })),
+                }));
+        },
         setNumPages: (n)=>set({
                 numPages: n
             }),
-        rotatePage: (page)=>set((state)=>({
+        rotatePage: (page)=>{
+            addToHistory();
+            set((state)=>({
                     pageRotations: {
                         ...state.pageRotations,
                         [page]: ((state.pageRotations[page] || 0) + 90) % 360
                     }
-                })),
+                }));
+        },
         reset: ()=>set({
                 file: null,
                 fileName: null,
@@ -628,7 +717,9 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 editableBlocks: [],
                 numPages: 0,
                 pageRotations: {},
-                isRestoring: false
+                isRestoring: false,
+                history: [],
+                future: []
             }),
         persistState: async ()=>{
             try {
@@ -655,7 +746,6 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 isRestoring: true
             });
             try {
-                // Initialize Worker Globally if not set
                 if ("TURBOPACK compile-time truthy", 1) {
                     __turbopack_context__.A("[project]/src/utils/pdfWorker.ts [app-client] (ecmascript, async loader)").then(({ initPdfWorker })=>initPdfWorker());
                 }
@@ -668,7 +758,9 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                         pageRotations: parsed.pageRotations || {},
                         pdfText: parsed.pdfText || '',
                         numPages: parsed.numPages || 0,
-                        fileName: parsed.fileName || null
+                        fileName: parsed.fileName || null,
+                        history: [],
+                        future: []
                     });
                 }
                 const fileEntry = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$storage$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["loadFileFromIDB"])('lastFile');
@@ -708,9 +800,7 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                     let lastY = -1;
                     const pageText = textContent.items.map((item)=>{
                         let str = item.str;
-                        if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-                            str = '\n' + str;
-                        }
+                        if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) str = '\n' + str;
                         lastY = item.transform[5];
                         return str;
                     }).join(' ');
@@ -726,7 +816,6 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
         scanPageForBlocks: async (pageNum)=>{
             const { file, editableBlocks } = get();
             if (!file) return;
-            // Clear existing blocks for this page to avoid duplicates
             set({
                 editableBlocks: editableBlocks.filter((b)=>b.page !== pageNum)
             });
@@ -740,22 +829,16 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 });
                 const textContent = await page.getTextContent();
                 const newBlocks = [];
-                // 1. Try Native Text Extraction
                 if (textContent.items.length > 0) {
                     console.log("Native text found, extracting...");
-                    // Group items by line roughly
                     textContent.items.forEach((item, idx)=>{
                         if (!item.str.trim()) return;
-                        // PDF coords (bottom-left) to Viewport coords (top-left)
-                        // item.transform: [scaleX, skewX, skewY, scaleY, x, y]
                         const tx = item.transform;
-                        const x = tx[4];
-                        const y = viewport.height - tx[5] - item.height;
                         newBlocks.push({
                             id: `native_${pageNum}_${idx}`,
                             page: pageNum,
-                            x: x,
-                            y: y,
+                            x: tx[4],
+                            y: viewport.height - tx[5] - item.height,
                             text: item.str,
                             width: item.width,
                             height: item.height || tx[0],
@@ -764,14 +847,11 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                         });
                     });
                 } else {
-                    // 2. Fallback to OCR (Tesseract)
                     console.log("No native text, running OCR...");
                     const imgData = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$tools$2f$convertTools$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getPageImage"](file, pageNum);
                     const worker = await __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$tesseract$2e$js$40$6$2e$0$2e$1_encoding$40$0$2e$1$2e$13$2f$node_modules$2f$tesseract$2e$js$2f$src$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"].createWorker('eng');
                     const { data } = await worker.recognize(imgData);
                     await worker.terminate();
-                    // Canvas dimensions vs Tesseract dimensions mapping
-                    // Convert.getPageImage uses scale 1.5, so we need to adjust
                     const scaleFactor = 1.5;
                     data.words.forEach((w, idx)=>{
                         newBlocks.push({
@@ -787,6 +867,7 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                         });
                     });
                 }
+                addToHistory(); // Record block addition
                 set((state)=>({
                         editableBlocks: [
                             ...state.editableBlocks,
@@ -797,7 +878,8 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 console.error("Scan Error:", e);
             }
         }
-    }));
+    };
+});
 if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
     __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
 }
@@ -1646,6 +1728,8 @@ __turbopack_context__.s([
     ()=>encryptPdf,
     "flattenPdf",
     ()=>flattenPdf,
+    "removeSecurity",
+    ()=>removeSecurity,
     "updateMetadata",
     ()=>updateMetadata
 ]);
@@ -1660,31 +1744,31 @@ const encryptPdf = async (file, password, permissions = {
 })=>{
     // Load source
     const srcDoc = await load(file);
-    // Create destination (fresh doc always has encrypt method)
+    // Create destination
     const dstDoc = await __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$pdf$2d$lib$40$1$2e$17$2e$1$2f$node_modules$2f$pdf$2d$lib$2f$es$2f$api$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PDFDocument"].create();
     // Copy all pages
     const indices = srcDoc.getPageIndices();
     const copiedPages = await dstDoc.copyPages(srcDoc, indices);
     copiedPages.forEach((page)=>dstDoc.addPage(page));
     // Construct permissions object
-    const permObj = {
-        modifying: !!permissions.modifying,
-        copying: !!permissions.copying,
-        annotating: !!permissions.modifying,
-        fillingForms: !!permissions.modifying,
-        contentAccessibility: !!permissions.copying,
-        documentAssembly: !!permissions.modifying
-    };
-    if (permissions.printing) {
-        permObj.printing = 'highResolution';
-    }
-    // Encrypt the fresh document
-    dstDoc.encrypt({
+    const p = permissions;
+    // Encrypt the fresh document using save options
+    // @ts-ignore - userPassword might not be directly in the type definition for save options in some environments
+    const saveOptions = {
         userPassword: password,
         ownerPassword: password,
-        permissions: permObj
-    });
-    return await dstDoc.save();
+        permissions: {
+            printing: p.printing ? 'highResolution' : undefined,
+            modifying: p.modifying,
+            copying: p.copying,
+            annotating: p.modifying,
+            fillingForms: p.modifying,
+            contentAccessibility: p.copying,
+            documentAssembly: p.modifying
+        },
+        useObjectStreams: false // Added as per instruction
+    };
+    return await dstDoc.save(saveOptions);
 };
 const flattenPdf = async (file)=>{
     const pdfDoc = await load(file);
@@ -1692,6 +1776,17 @@ const flattenPdf = async (file)=>{
         pdfDoc.getForm().flatten();
     } catch (e) {}
     return await pdfDoc.save();
+};
+const removeSecurity = async (file, password)=>{
+    // Load with password (if needed). If password is not provided and file is encrypted, it will throw.
+    // If password is provided and correct, it loads the decrypted document.
+    // If password is provided but incorrect, it will throw.
+    const fileBytes = await file.arrayBuffer();
+    const doc = await __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$pdf$2d$lib$40$1$2e$17$2e$1$2f$node_modules$2f$pdf$2d$lib$2f$es$2f$api$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PDFDocument"].load(fileBytes, {
+        password
+    });
+    // Saving without any encryption options effectively removes the security
+    return await doc.save();
 };
 const updateMetadata = async (file, meta)=>{
     const pdfDoc = await load(file);
@@ -1707,7 +1802,8 @@ const checkEncryption = async (file)=>{
         await pdfjs.getDocument(arrayBuffer).promise;
         return false;
     } catch (error) {
-        if (error.name === 'PasswordException' || error.password) {
+        console.log("CheckEncryption Error:", error.name, error.message, error);
+        if (error.name === 'PasswordException' || error.password || error.code === 1) {
             return true;
         }
         return false;
@@ -1722,8 +1818,13 @@ const decryptPdf = async (file, password)=>{
         });
         // Save without any encryption settings (removes it)
         const decryptedBytes = await pdfDoc.save();
-        return new File([
+        const blob = new Blob([
             decryptedBytes
+        ], {
+            type: 'application/pdf'
+        });
+        return new File([
+            blob
         ], file.name.replace('.pdf', '_decrypted.pdf'), {
             type: 'application/pdf'
         });
@@ -1806,6 +1907,8 @@ const LandingPage = ()=>{
                     return;
                 }
                 setFile(file);
+                // Fix: Persist immediately
+                await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
                 router.push('/editor/cursor');
                 return;
             }
@@ -1813,12 +1916,20 @@ const LandingPage = ()=>{
             if (imageFiles.length > 0) {
                 const pdfBytes = await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$tools$2f$convertTools$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["createPdfFromImages"](imageFiles);
                 const fileName = imageFiles.length === 1 ? imageFiles[0].name.replace(/\.[^/.]+$/, "") + ".pdf" : "images_bundle.pdf";
-                const newFile = new File([
+                // Fix: Properly handle Blob/File creation without 'any'
+                const blob = new Blob([
                     pdfBytes
+                ], {
+                    type: 'application/pdf'
+                });
+                const newFile = new File([
+                    blob
                 ], fileName, {
                     type: 'application/pdf'
                 });
                 setFile(newFile);
+                // Fix: Persist immediately to avoid race condition on router push
+                await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
                 router.push('/editor/cursor');
                 return;
             }
@@ -1832,14 +1943,21 @@ const LandingPage = ()=>{
     };
     const handleUnlock = async (password)=>{
         if (!passwordDialog.file) return;
-        // Decrypt and set file
-        const decryptedFile = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$tools$2f$securityTools$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["decryptPdf"])(passwordDialog.file, password);
-        setFile(decryptedFile);
-        setPasswordDialog({
-            isOpen: false,
-            file: null
-        });
-        router.push('/editor/cursor');
+        try {
+            // Decrypt and set file
+            const decryptedFile = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$tools$2f$securityTools$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["decryptPdf"])(passwordDialog.file, password);
+            setFile(decryptedFile);
+            // Persist state immediately
+            await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
+            setPasswordDialog({
+                isOpen: false,
+                file: null
+            });
+            router.push('/editor/cursor');
+        } catch (e) {
+            alert("Failed to unlock PDF. Please check the password.");
+            console.error(e);
+        }
     };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
         className: "min-h-screen relative overflow-hidden flex flex-col bg-transparent",
@@ -1853,7 +1971,7 @@ const LandingPage = ()=>{
                 className: "hidden"
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 86,
+                lineNumber: 104,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$ui$2f$SettingsDialog$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SettingsDialog"], {
@@ -1861,7 +1979,7 @@ const LandingPage = ()=>{
                 onClose: ()=>setIsSettingsOpen(false)
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 87,
+                lineNumber: 105,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$ui$2f$PasswordDialog$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PasswordDialog"], {
@@ -1874,21 +1992,21 @@ const LandingPage = ()=>{
                 fileName: passwordDialog.file?.name || 'Document'
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 89,
+                lineNumber: 107,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "fixed top-[-20%] left-[-10%] w-[800px] h-[800px] bg-red-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse"
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 97,
+                lineNumber: 115,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "fixed bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-orange-500/10 rounded-full blur-[100px] pointer-events-none"
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 98,
+                lineNumber: 116,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("header", {
@@ -1903,12 +2021,12 @@ const LandingPage = ()=>{
                                     className: "text-white w-6 h-6"
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 104,
+                                    lineNumber: 122,
                                     columnNumber: 25
                                 }, ("TURBOPACK compile-time value", void 0))
                             }, void 0, false, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 103,
+                                lineNumber: 121,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0)),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1916,13 +2034,13 @@ const LandingPage = ()=>{
                                 children: "ExtraPDF"
                             }, void 0, false, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 106,
+                                lineNumber: 124,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0))
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 102,
+                        lineNumber: 120,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1932,18 +2050,18 @@ const LandingPage = ()=>{
                             className: "w-5 h-5"
                         }, void 0, false, {
                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                            lineNumber: 109,
+                            lineNumber: 127,
                             columnNumber: 21
                         }, ("TURBOPACK compile-time value", void 0))
                     }, void 0, false, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 108,
+                        lineNumber: 126,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0))
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 101,
+                lineNumber: 119,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
@@ -1959,14 +2077,14 @@ const LandingPage = ()=>{
                                         className: "w-3 h-3"
                                     }, void 0, false, {
                                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                                        lineNumber: 117,
+                                        lineNumber: 135,
                                         columnNumber: 25
                                     }, ("TURBOPACK compile-time value", void 0)),
                                     " AI Powered Editor"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 116,
+                                lineNumber: 134,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0)),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -1978,13 +2096,13 @@ const LandingPage = ()=>{
                                         children: "Intelligence"
                                     }, void 0, false, {
                                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                                        lineNumber: 120,
+                                        lineNumber: 138,
                                         columnNumber: 36
                                     }, ("TURBOPACK compile-time value", void 0))
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 119,
+                                lineNumber: 137,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0)),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1992,13 +2110,13 @@ const LandingPage = ()=>{
                                 children: "Chat with your documents, edit text, and organize pages magically ✨"
                             }, void 0, false, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 122,
+                                lineNumber: 140,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0))
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 115,
+                        lineNumber: 133,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2025,7 +2143,7 @@ const LandingPage = ()=>{
                                     className: "w-12 h-12"
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 144,
+                                    lineNumber: 162,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0)),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2033,31 +2151,31 @@ const LandingPage = ()=>{
                                     children: "Crunching pixels... 🍪"
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 145,
+                                    lineNumber: 163,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0))
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                            lineNumber: 143,
+                            lineNumber: 161,
                             columnNumber: 25
                         }, ("TURBOPACK compile-time value", void 0)) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
                             children: [
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: `
                         p-6 rounded-full shadow-lg transition-transform duration-500
-                        ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-white text-foreground group-hover:scale-110'}
+                        ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-secondary text-foreground group-hover:scale-110'}
                     `,
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$lucide$2d$react$40$0$2e$561$2e$0_react$40$19$2e$2$2e$3$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__["Upload"], {
                                         className: "w-8 h-8"
                                     }, void 0, false, {
                                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                                        lineNumber: 153,
+                                        lineNumber: 171,
                                         columnNumber: 33
                                     }, ("TURBOPACK compile-time value", void 0))
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 149,
+                                    lineNumber: 167,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0)),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2068,7 +2186,7 @@ const LandingPage = ()=>{
                                             children: "Drop PDF or Images"
                                         }, void 0, false, {
                                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                                            lineNumber: 156,
+                                            lineNumber: 174,
                                             columnNumber: 33
                                         }, ("TURBOPACK compile-time value", void 0)),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -2076,20 +2194,20 @@ const LandingPage = ()=>{
                                             children: "Combine multiple files instantly"
                                         }, void 0, false, {
                                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                                            lineNumber: 157,
+                                            lineNumber: 175,
                                             columnNumber: 33
                                         }, ("TURBOPACK compile-time value", void 0))
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 155,
+                                    lineNumber: 173,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0))
                             ]
                         }, void 0, true)
                     }, void 0, false, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 128,
+                        lineNumber: 146,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2099,24 +2217,24 @@ const LandingPage = ()=>{
                             placeholder: "Ask to summarize or edit a document..."
                         }, void 0, false, {
                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                            lineNumber: 165,
+                            lineNumber: 183,
                             columnNumber: 21
                         }, ("TURBOPACK compile-time value", void 0))
                     }, void 0, false, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 164,
+                        lineNumber: 182,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0))
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 114,
+                lineNumber: 132,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0))
         ]
     }, void 0, true, {
         fileName: "[project]/src/features/home/LandingPage.tsx",
-        lineNumber: 85,
+        lineNumber: 103,
         columnNumber: 9
     }, ("TURBOPACK compile-time value", void 0));
 };

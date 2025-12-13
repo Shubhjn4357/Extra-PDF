@@ -7,9 +7,9 @@ __turbopack_context__.s([
     ()=>register
 ]);
 async function register() {
-    if ("TURBOPACK compile-time truthy", 1) {
-        await __turbopack_context__.A("[project]/src/utils/polyfill.js [instrumentation] (ecmascript, async loader)");
-    }
+// if (process.env.NEXT_RUNTIME === 'nodejs') {
+//     await import('./utils/polyfill.js');
+// }
 }
 }),
 ];

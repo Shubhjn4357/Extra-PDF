@@ -71,7 +71,8 @@ export const checkEncryption = async (file: File): Promise<boolean> => {
         await pdfjs.getDocument(arrayBuffer).promise;
         return false;
     } catch (error: any) {
-        if (error.name === 'PasswordException' || error.password) {
+        console.log("CheckEncryption Error:", error.name, error.message, error);
+        if (error.name === 'PasswordException' || error.password || error.code === 1) { // 1 is often PasswordException code
             return true;
         }
         return false;

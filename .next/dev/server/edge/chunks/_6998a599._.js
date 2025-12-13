@@ -7,8 +7,9 @@ __turbopack_context__.s([
     ()=>register
 ]);
 async function register() {
-    if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
-    ;
+// if (process.env.NEXT_RUNTIME === 'nodejs') {
+//     await import('./utils/polyfill.js');
+// }
 }
 }),
 "[project]/edge-wrapper.js { MODULE => \"[project]/src/instrumentation.ts [instrumentation-edge] (ecmascript)\" } [instrumentation-edge] (ecmascript)", ((__turbopack_context__) => {
