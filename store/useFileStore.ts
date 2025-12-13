@@ -4,6 +4,7 @@ import { pdfjs } from 'react-pdf';
 // @ts-ignore
 import Tesseract from 'tesseract.js';
 import * as Convert from '../services/tools/convertTools';
+import { saveFileToIDB, loadFileFromIDB, clearIDB } from '../services/storage';
 
 // Initialize worker globally
 if (pdfjs.GlobalWorkerOptions) {
@@ -38,6 +39,8 @@ interface FileState {
   // Async Actions
   extractAllText: (file: File) => Promise<void>;
   scanPageForBlocks: (pageNum: number) => Promise<void>;
+  persistState: () => Promise<void>;
+  restoreState: () => Promise<void>;
 }
 
 export const useFileStore = create<FileState>((set, get) => ({
@@ -61,7 +64,8 @@ export const useFileStore = create<FileState>((set, get) => ({
   replaceFile: (newFileBytes, name) => {
     const currentFile = get().file;
     const newName = name || currentFile?.name || 'document.pdf';
-    const newFile = new File([newFileBytes], newName, { type: 'application/pdf' });
+    const blob = new Blob([Buffer.from(newFileBytes)], { type: 'application/pdf' });
+    const newFile = new File([blob], newName, { type: 'application/pdf' });
     set({ 
         file: newFile, 
         fileName: newName,
@@ -70,6 +74,8 @@ export const useFileStore = create<FileState>((set, get) => ({
         pageRotations: {},
         pdfText: "" 
     });
+    // persist updated file bytes
+    try { saveFileToIDB('lastFile', newFileBytes, newName); } catch (e) { }
   },
 
   setPdfText: (text) => set({ pdfText: text }),
@@ -104,6 +110,48 @@ export const useFileStore = create<FileState>((set, get) => ({
   reset: () => set({ 
       file: null, fileName: null, pdfText: "", annotations: [], editableBlocks: [], numPages: 0, pageRotations: {} 
   }),
+
+  persistState: async () => {
+    try {
+      const s = {
+        annotations: get().annotations,
+        editableBlocks: get().editableBlocks,
+        pageRotations: get().pageRotations,
+        pdfText: get().pdfText,
+        numPages: get().numPages,
+        fileName: get().fileName
+      };
+      localStorage.setItem('extrapdf_state', JSON.stringify(s));
+      const f = get().file;
+      if (f) {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        await saveFileToIDB('lastFile', bytes, f.name);
+      }
+    } catch (e) { console.error('Persist Error', e); }
+  },
+
+  restoreState: async () => {
+    try {
+      const raw = localStorage.getItem('extrapdf_state');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        set({
+          annotations: parsed.annotations || [],
+          editableBlocks: parsed.editableBlocks || [],
+          pageRotations: parsed.pageRotations || {},
+          pdfText: parsed.pdfText || '',
+          numPages: parsed.numPages || 0,
+          fileName: parsed.fileName || null
+        });
+      }
+      const fileEntry = await loadFileFromIDB('lastFile');
+      if (fileEntry && fileEntry.bytes) {
+        const blob = new Blob([Buffer.from(fileEntry.bytes)], { type: 'application/pdf' });
+        const f = new File([blob], fileEntry.name, { type: 'application/pdf' });
+        set({ file: f, fileName: fileEntry.name });
+      }
+    } catch (e) { console.error('Restore Error', e); }
+  },
 
   extractAllText: async (file) => {
     try {

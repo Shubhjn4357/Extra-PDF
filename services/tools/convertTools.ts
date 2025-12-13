@@ -74,7 +74,7 @@ export const createPptxFromPdf = async (file: File): Promise<Blob> => {
         slide.addText(`Page ${i}`, { x: 0.5, y: '90%', fontSize: 10, color: '808080' });
     }
 
-    return await pres.write("blob");
+    return (await pres.write({ outputType: 'blob' })) as Blob;
 };
 
 // --- OFFICE TO PDF (Client Side Simulation/Best Effort) ---

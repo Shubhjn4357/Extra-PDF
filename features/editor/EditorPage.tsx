@@ -13,6 +13,7 @@ import { SettingsDialog } from '../../components/ui/SettingsDialog';
 import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '../../types';
 import { ChevronLeft, Menu, Settings2, Scissors, PanelLeftClose, PanelLeftOpen, Stamp, Lock, Sparkles, Loader2, Bot } from 'lucide-react';
 import { createChatSession, detectStamps, streamResponse, prepareDocumentPrompt, removeStampWithMask } from '../../services/geminiService';
+import { buildFinalPrompt, generateMaskBase64 } from '../../services/editorHelpers';
 
 // Import Modular Tools
 import * as Organize from '../../services/tools/organizeTools';
@@ -92,7 +93,23 @@ export const EditorPage: React.FC = () => {
       else setThumbnailsOpen(false);
       
       chatSessionRef.current = createChatSession();
+      // Try to restore last session (file + annotations) from storage
+      (async () => {
+          try {
+              await (await import('../../store/useFileStore')).useFileStore.getState().restoreState();
+          } catch (e) { console.warn('Restore failed', e); }
+      })();
   }, []);
+
+    // Persist file state when annotations/blocks change (debounced)
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            (async () => {
+                try { await (await import('../../store/useFileStore')).useFileStore.getState().persistState(); } catch (e) { }
+            })();
+        }, 700);
+        return () => clearTimeout(timeout);
+    }, [annotations, editableBlocks, pageRotations, pdfText]);
 
   useEffect(() => {
     if (modal.type === 'encrypt' && settings.defaultPassword) {
@@ -111,13 +128,8 @@ export const EditorPage: React.FC = () => {
       // Optimistic UI update
       setChatMessages(prev => [...prev, { id: userMsgId, role: 'user', text }]);
 
-      const prompt = prepareDocumentPrompt(pdfText, text, isFirstMsgRef.current);
+      const finalPrompt = buildFinalPrompt(pdfText, text, isFirstMsgRef.current, settings);
       isFirstMsgRef.current = false;
-
-      // Apply AI Thinking Setting
-      const finalPrompt = settings.aiThinking 
-         ? prompt + "\n\n(IMPORTANT: Please Explain your reasoning step-by-step before giving the final answer.)"
-         : prompt + "\n\n(IMPORTANT: Be concise. Do not explain reasoning unless asked.)";
 
       // Placeholder for model response
       const modelMsgId = (Date.now() + 1).toString();
@@ -348,28 +360,8 @@ export const EditorPage: React.FC = () => {
              }));
           }
 
-          // 3. Generate Mask
-          const imgObj = new Image();
-          imgObj.src = imgBase64;
-          await imgObj.decode();
-
-          const canvas = document.createElement('canvas');
-          canvas.width = imgObj.width;
-          canvas.height = imgObj.height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error("Canvas context failed");
-
-          // Black background (Keep)
-          ctx.fillStyle = "black";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          
-          // White foreground (Remove)
-          ctx.fillStyle = "white";
-          boxes.forEach(box => {
-              ctx.fillRect(box.x, box.y, box.w, box.h);
-          });
-          
-          const maskBase64 = canvas.toDataURL("image/png");
+          // 3. Generate Mask (centralized helper supports pixel or normalized boxes)
+          const maskBase64 = await generateMaskBase64(imgBase64, boxes);
 
           // 4. Call Gemini Inpainting
           const cleanedImage = await removeStampWithMask(imgBase64, maskBase64);
@@ -480,7 +472,8 @@ export const EditorPage: React.FC = () => {
           let finalBytes = await Edit.saveAnnotations(file, allAnnotations, pageRotations);
           
           if (options.password) {
-             const tempFile = new File([finalBytes], fileName, { type: 'application/pdf' });
+              const blob = new Blob([Buffer.from(finalBytes)], { type: 'application/pdf' });
+              const tempFile = new File([blob], fileName, { type: 'application/pdf' });
              finalBytes = await Security.encryptPdf(tempFile, options.password, settings.permissions);
           }
           download(finalBytes, fileName);
@@ -513,7 +506,8 @@ export const EditorPage: React.FC = () => {
   };
 
   const download = (data: Blob | Uint8Array, name: string) => {
-      const url = URL.createObjectURL(new Blob([data]));
+      const blob = data instanceof Blob ? data : new Blob([Buffer.from(data as Uint8Array)]);
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url; link.download = name;
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
