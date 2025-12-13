@@ -83,11 +83,20 @@ export const LandingPage: React.FC = () => {
     const handleUnlock = async (password: string) => {
         if (!passwordDialog.file) return;
 
-        // Decrypt and set file
-        const decryptedFile = await decryptPdf(passwordDialog.file, password);
-        setFile(decryptedFile);
-        setPasswordDialog({ isOpen: false, file: null });
-        router.push('/editor/cursor');
+        try {
+            // Decrypt and set file
+            const decryptedFile = await decryptPdf(passwordDialog.file, password);
+            setFile(decryptedFile);
+
+            // Persist state immediately
+            await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
+
+            setPasswordDialog({ isOpen: false, file: null });
+            router.push('/editor/cursor');
+        } catch (e) {
+            alert("Failed to unlock PDF. Please check the password.");
+            console.error(e);
+        }
     };
 
     return (

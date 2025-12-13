@@ -27,7 +27,7 @@ import { detectStamps, removeStampWithMask } from '@/services/geminiService';
 
 export const EditorPage: React.FC = () => {
     const router = useRouter();
-    const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation, editableBlocks, isRestoring } = useFileStore();
+    const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation, editableBlocks, isRestoring, undo, redo } = useFileStore();
     const { settings } = useSettingsStore();
 
     // View State
@@ -494,14 +494,15 @@ export const EditorPage: React.FC = () => {
 
                 {/* Editor Content */}
                 <div className="flex-1 flex flex-col min-w-0 bg-muted/20 relative">
-                    <EditorToolbar 
+                    <EditorToolbar
                         mode={mode} selectedAnnotationType={selectedAnnotation ? (selectedAnnotation.type as any) : null}
                         zoom={zoom} setZoom={setZoom}
-                        onAction={(a) => { if (a === 'merge_add') mergeInputRef.current?.click(); if (a === 'toggle_ai') setIsThinkingOpen(!isThinkingOpen); }} 
+                        onAction={(a) => { if (a === 'merge_add') mergeInputRef.current?.click(); if (a === 'toggle_ai') setIsThinkingOpen(!isThinkingOpen); }}
                         onExport={() => setIsExportOpen(true)} status={statusMsg}
                         drawColor={drawColor} setDrawColor={(c) => { setDrawColor(c); if (mode === 'cursor' && selectedAnnId) updateAnnotation(selectedAnnId, { color: c }); }}
                         brushSize={brushSize} setBrushSize={(s) => { setBrushSize(s); if (mode === 'cursor' && selectedAnnId) updateAnnotation(selectedAnnId, { thickness: s, size: s }); }}
                         textStyle={textStyle} setTextStyle={handleTextStyleChange}
+                        onUndo={undo} onRedo={redo}
                     />
 
                     <div className="flex-1 overflow-auto p-4 md:p-8 relative scroll-smooth bg-zinc-100 dark:bg-zinc-900/50" ref={scrollContainerRef}>
@@ -513,16 +514,18 @@ export const EditorPage: React.FC = () => {
                             {/* Compare Mode Split View */}
                             {mode === 'compare' && compareFile ? (
                                 <div className="flex w-full h-[85vh] gap-4">
-                                    <div className="flex-1 border rounded-lg overflow-hidden bg-white/50 relative shadow-inner">
-                                        <div className="absolute top-2 left-2 z-10 bg-black/50 text-white px-2 rounded text-xs">Original</div>
-                                        <PDFCanvas zoom={zoom} setZoom={setZoom} mode={mode} activePage={activePage} onPageSelect={setActivePage} pendingImage={null} onImagePlaced={() => { }} drawColor={drawColor} brushSize={brushSize} textStyle={textStyle} onStampRemove={() => { }} onAnnotationSelect={() => { }} onCropApply={() => { }} />
+                                    <div className="flex-1 border rounded-lg overflow-auto bg-white/50 relative shadow-inner custom-scrollbar">
+                                        <div className="sticky top-2 left-2 z-10 bg-black/50 text-white px-2 rounded text-sm w-fit">Original</div>
+                                        <div className="min-h-full p-4">
+                                            <PDFCanvas zoom={zoom} setZoom={setZoom} mode='cursor' activePage={activePage} onPageSelect={setActivePage} pendingImage={null} onImagePlaced={() => { }} drawColor={drawColor} brushSize={brushSize} textStyle={textStyle} onStampRemove={() => { }} onAnnotationSelect={() => { }} onCropApply={() => { }} />
+                                        </div>
                                     </div>
-                                    <div className="flex-1 border rounded-lg overflow-hidden bg-white/50 relative shadow-inner">
-                                        <div className="absolute top-0 left-0 w-full h-10 bg-background border-b flex items-center justify-between px-4 z-10">
+                                    <div className="flex-1 border rounded-lg overflow-hidden bg-white/50 relative shadow-inner flex flex-col">
+                                        <div className="w-full h-10 bg-background border-b flex items-center justify-between px-4 z-10 shrink-0">
                                             <span className="font-bold text-xs truncate max-w-[200px]">{compareFile.name} (Preview)</span>
                                             <button onClick={() => { setMode('cursor'); setCompareFile(null); }} className="text-destructive text-xs font-bold hover:bg-destructive/10 px-2 py-1 rounded">Close</button>
                                         </div>
-                                        <div className="w-full h-full pt-10">
+                                        <div className="flex-1 w-full bg-white">
                                             <iframe src={URL.createObjectURL(compareFile)} className="w-full h-full border-none" />
                                         </div>
                                     </div>

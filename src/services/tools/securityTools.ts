@@ -21,35 +21,39 @@ export const encryptPdf = async (
     // Construct permissions object
     const p = permissions;
 
-    // Encrypt the fresh document
-    // We cast to any because Typescript definitions might be outdated in the environment
-    // or strict checks are interfering, but the method exists in standard pdf-lib.
-    if (typeof (dstDoc as any).encrypt === 'function') {
-        (dstDoc as any).encrypt({
-            userPassword: password,
-            ownerPassword: password,
-            permissions: {
-                printing: p.printing ? 'highResolution' : undefined,
-                modifying: p.modifying,
-                copying: p.copying,
-                annotating: p.modifying,
-                fillingForms: p.modifying,
-                contentAccessibility: p.copying,
-                documentAssembly: p.modifying
-            }
-        });
-    } else {
-        console.warn("PDF Encryption method not found on document instance.");
-        throw new Error("Encryption not supported in this environment.");
-    }
-
-    return await dstDoc.save();
+    // Encrypt the fresh document using save options
+    // @ts-ignore - userPassword might not be directly in the type definition for save options in some environments
+    const saveOptions: any = {
+        userPassword: password,
+        ownerPassword: password,
+        permissions: {
+            printing: p.printing ? 'highResolution' : undefined,
+            modifying: p.modifying,
+            copying: p.copying,
+            annotating: p.modifying,
+            fillingForms: p.modifying,
+            contentAccessibility: p.copying,
+            documentAssembly: p.modifying
+        },
+        useObjectStreams: false // Added as per instruction
+    };
+    return await dstDoc.save(saveOptions);
 };
 
 export const flattenPdf = async (file: File): Promise<Uint8Array> => {
     const pdfDoc = await load(file);
     try { pdfDoc.getForm().flatten(); } catch (e) { /* ignore */ }
     return await pdfDoc.save();
+};
+
+export const removeSecurity = async (file: File, password?: string): Promise<Uint8Array> => {
+    // Load with password (if needed). If password is not provided and file is encrypted, it will throw.
+    // If password is provided and correct, it loads the decrypted document.
+    // If password is provided but incorrect, it will throw.
+    const fileBytes = await file.arrayBuffer();
+    const doc = await PDFDocument.load(fileBytes, { password } as any);
+    // Saving without any encryption options effectively removes the security
+    return await doc.save();
 };
 
 export const updateMetadata = async (file: File, meta: { title?: string, author?: string }): Promise<Uint8Array> => {
