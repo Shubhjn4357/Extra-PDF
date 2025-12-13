@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///D:/Code/Extra-PDF/src/utils/polyfill.js"],"sourcesContent":["\r\n\r\n// console.log(\"POLYFILL RUNNING\");\r\n// if (typeof window === 'undefined') {\r\n//     global.Buffer = global.Buffer || require('buffer').Buffer;\r\n//     global.DOMMatrix = global.DOMMatrix || class DOMMatrix {\r\n//         constructor() { this.a = 1; this.b = 0; this.c = 0; this.d = 1; this.e = 0; this.f = 0; }\r\n//     };\r\n//     global.Image = global.Image || class Image { };\r\n//     global.HTMLCanvasElement = global.HTMLCanvasElement || class HTMLCanvasElement { };\r\n//     global.ImageData = global.ImageData || class ImageData { };\r\n//     global.performance = global.performance || require('perf_hooks').performance;\r\n// } else if (!window.Buffer) {\r\n//     window.Buffer = require('buffer').Buffer;\r\n// }\r\n"],"names":[],"mappings":"AAEA,mCAAmC;AACnC,uCAAuC;AACvC,iEAAiE;AACjE,+DAA+D;AAC/D,oGAAoG;AACpG,SAAS;AACT,sDAAsD;AACtD,0FAA0F;AAC1F,kEAAkE;AAClE,oFAAoF;AACpF,+BAA+B;AAC/B,gDAAgD;AAChD,IAAI"}}]
+}

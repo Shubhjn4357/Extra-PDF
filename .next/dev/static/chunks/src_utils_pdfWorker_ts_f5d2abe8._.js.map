@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///D:/Code/Extra-PDF/src/utils/pdfWorker.ts"],"sourcesContent":["import { pdfjs } from 'react-pdf';\r\nif (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {\r\n    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;\r\n}\r\n\r\nexport const initPdfWorker = () => {\r\n    // Just ensuring import side-effect runs\r\n};\r\n"],"names":[],"mappings":";;;;AAAA;;AACA,IAAI,+CAAkB,eAAe,CAAC,uPAAK,CAAC,mBAAmB,CAAC,SAAS,EAAE;IACvE,uPAAK,CAAC,mBAAmB,CAAC,SAAS,GAAG,CAAC,uBAAuB,EAAE,uPAAK,CAAC,OAAO,CAAC,yBAAyB,CAAC;AAC5G;AAEO,MAAM,gBAAgB;AACzB,wCAAwC;AAC5C"}}]
+}
