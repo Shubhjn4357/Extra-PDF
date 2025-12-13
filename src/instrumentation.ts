@@ -1,5 +1,5 @@
 export async function register() {
-    if (process.env.NEXT_RUNTIME === 'nodejs') {
-        await import('./utils/polyfill.js');
-    }
+    // if (process.env.NEXT_RUNTIME === 'nodejs') {
+    //     await import('./utils/polyfill.js');
+    // }
 }

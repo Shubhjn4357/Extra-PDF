@@ -57,7 +57,7 @@ export const LandingPage: React.FC = () => {
                     ? imageFiles[0].name.replace(/\.[^/.]+$/, "") + ".pdf"
                     : "images_bundle.pdf";
 
-                const newFile = new File([pdfBytes], fileName, { type: 'application/pdf' });
+                const newFile = new File([pdfBytes as any], fileName, { type: 'application/pdf' });
                 setFile(newFile);
                 router.push('/editor/cursor');
                 return;
@@ -148,7 +148,7 @@ export const LandingPage: React.FC = () => {
                         <>
                             <div className={`
                         p-6 rounded-full shadow-lg transition-transform duration-500
-                        ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-white text-foreground group-hover:scale-110'}
+                        ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-secondary text-foreground group-hover:scale-110'}
                     `}>
                                 <Upload className="w-8 h-8" />
                             </div>

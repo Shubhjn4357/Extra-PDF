@@ -79,7 +79,7 @@ export const decryptPdf = async (file: File, password: string): Promise<File> =>
         const decryptedBytes = await pdfDoc.save();
 
         return new File(
-            [decryptedBytes],
+            [decryptedBytes as any],
             file.name.replace('.pdf', '_decrypted.pdf'),
             { type: 'application/pdf' }
         );
