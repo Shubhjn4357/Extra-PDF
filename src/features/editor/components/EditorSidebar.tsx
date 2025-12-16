@@ -21,7 +21,7 @@ import {
     MousePointer, Type, Eraser, PenLine, Scissors, Merge,
     Shield, RotateCw, FileImage, Layers, Trash, Stamp,
     Image as ImageIcon, AlignLeft, Info, FileStack,
-    Hash, FileOutput, Wand2, FileText, FileMinus
+    Hash, FileOutput, Wand2, FileText, FileMinus, ShieldOff
 } from 'lucide-react';
 import { useSettingsStore } from '@/store/useSettingsStore';
 
@@ -60,7 +60,7 @@ export const toolsList: Tool[] = [
 
     // SECURITY
     { id: 'encrypt', label: 'Protect', icon: Shield, category: 'security', description: 'Password', requiresModal: true, shortcut: 'Alt+L' },
-    { id: 'unlock', label: 'Unlock', icon: Shield, category: 'security', description: 'Remove Password', requiresModal: true, shortcut: 'Alt+U' },
+    { id: 'unlock', label: 'Unlock', icon: ShieldOff, category: 'security', description: 'Remove Password', requiresModal: true, shortcut: 'Alt+U' },
     { id: 'force_unlock', label: 'Force Unlock', icon: Wand2, category: 'security', description: 'Brute Force', shortcut: 'Alt+Shift+U' },
     { id: 'flatten', label: 'Flatten', icon: Layers, category: 'security', description: 'Flatten', shortcut: 'Alt+F' },
     { id: 'metadata', label: 'Meta', icon: Info, category: 'security', description: 'Metadata', requiresModal: true, shortcut: 'Alt+I' },

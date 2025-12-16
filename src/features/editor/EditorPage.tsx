@@ -319,13 +319,19 @@ export const EditorPage: React.FC = () => {
                 const pagesToDelete = mInput1.split(',').map(n => parseInt(n.trim()));
                 res = await Organize.deletePages(file, pagesToDelete); updateView = true;
             } else if (modal.type === 'encrypt') {
-                res = await Security.encryptPdf(file, mInput1, settings.permissions);
+                res = await Security.encryptPdf(file, mInput1, settings.permissions); 
+                updateView = true; // Update view with encrypted PDF, don't just download
             } else if (modal.type === 'watermark') {
-                res = await Edit.addWatermark(file, mInput1, drawColor); updateView = true;
+                res = await Edit.addWatermark(file, mInput1, drawColor);
+                updateView = true;
             } else if (modal.type === 'metadata') {
-                res = await Security.updateMetadata(file, { title: mInput1, author: mInput2 }); updateView = true;
+                res = await Security.updateMetadata(file, { title: mInput1, author: mInput2 });
+                updateView = true;
             } else if (modal.type === 'html_to_pdf') {
-                res = await Convert.htmlToPdf(htmlInput); replaceFile(res, 'web_convert.pdf'); setModal({ type: null, isOpen: false }); return;
+                res = await Convert.htmlToPdf(htmlInput);
+                replaceFile(res, 'web_convert.pdf');
+                setModal({ type: null, isOpen: false });
+                return;
             }
             if (res) {
                 if (updateView) { replaceFile(res); setStatusMsg("Applied! 👍"); toast.success("Changes applied successfully"); } else {

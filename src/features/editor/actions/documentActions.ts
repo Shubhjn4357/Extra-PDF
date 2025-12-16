@@ -48,36 +48,64 @@ export const useDocumentActions = ({ setIsBusy, setStatusMsg, setMode, setPendin
         if (!file) return;
         try {
             switch (action) {
-                case 'rotate_left': rotatePage(activePage); break;
-                case 'rotate_right': rotatePage(activePage); break;
+                case 'rotate':
+                case 'rotate_left':
+                case 'rotate_right':
+                    setIsBusy(true); setStatusMsg("Rotating... 🔄");
+                    const rotatedBytes = await Organize.rotateSpecificPage(file, activePage, 90);
+                    replaceFile(rotatedBytes, 'rotated.pdf');
+                    setIsBusy(false); setStatusMsg("Rotated! ✅");
+                    break;
+                case 'remove_empty':
+                    setIsBusy(true); setStatusMsg("Scanning for empty pages... 🔍");
+                    const result = await Organize.removeEmptyPages(file);
+                    if (result.pdfBytes) {
+                        replaceFile(result.pdfBytes, 'cleaned.pdf');
+                        setStatusMsg(`Removed ${result.removedCount} empty page(s)! 🧹`);
+                    } else {
+                        setStatusMsg("No empty pages found! 👍");
+                    }
+                    setIsBusy(false);
+                    break;
+                case 'page_numbers':
+                    setIsBusy(true); setStatusMsg("Adding page numbers... 📝");
+                    const numberedBytes = await Organize.addPageNumbers(file);
+                    replaceFile(numberedBytes, 'numbered.pdf');
+                    setIsBusy(false); setStatusMsg("Page numbers added! ✅");
+                    break;
                 case 'compress':
                     setIsBusy(true); setStatusMsg("Compressing... 📦");
-
                     const c = await Optimize.compressPdf(file);
                     replaceFile(c, 'compressed.pdf');
                     setIsBusy(false); setStatusMsg("Compressed! 📉");
                     break;
                 case 'flatten':
+                    setIsBusy(true); setStatusMsg("Flattening... 📄");
                     const flat = await Security.flattenPdf(file);
-                    replaceFile(flat, 'flattened.pdf'); setStatusMsg("Flattened! 📄");
+                    replaceFile(flat, 'flattened.pdf');
+                    setIsBusy(false); setStatusMsg("Flattened! 📄");
                     break;
                 case 'grayscale':
-                    // Not implemented in client-side robustly for vector yet, but let's assume optimize does it or alert
                     alert("Greyscale conversion requires server-side processing currently.");
                     break;
                 case 'repair':
+                    setIsBusy(true); setStatusMsg("Repairing... 🔧");
                     const rep = await Convert.repairPdf(file);
-                    replaceFile(rep, 'repaired.pdf'); setStatusMsg("Repaired! 🔧");
+                    replaceFile(rep, 'repaired.pdf');
+                    setIsBusy(false); setStatusMsg("Repaired! 🔧");
                     break;
                 case 'split': refs.modal({ type: 'split', isOpen: true }); break;
+                case 'encrypt': refs.modal({ type: 'encrypt', isOpen: true }); break;
                 case 'merge': refs.merge.current?.click(); break;
                 case 'image_to_pdf': refs.image.current?.click(); break;
                 case 'word_to_pdf': refs.word.current?.click(); break;
                 case 'html_to_pdf': refs.modal({ type: 'html_to_pdf', isOpen: true }); break;
                 case 'protect': refs.modal({ type: 'encrypt', isOpen: true }); break;
-                case 'unlock': refs.modal({ type: 'encrypt', isOpen: true }); /* reusing encrypt modal logic for password input if needed? Actually unlock usually needs currently open file password. If file is open it is unlocked. Maybe this means Remove Security? */
+                case 'unlock':
+                    setIsBusy(true); setStatusMsg("Removing security... 🔓");
                     const unlocked = await Security.removeSecurity(file);
-                    replaceFile(unlocked, 'unlocked.pdf'); setStatusMsg("Security Removed 🔓");
+                    replaceFile(unlocked, 'unlocked.pdf');
+                    setIsBusy(false); setStatusMsg("Security Removed 🔓");
                     break;
                 case 'watermark': refs.modal({ type: 'watermark', isOpen: true }); break;
                 case 'metadata': refs.modal({ type: 'metadata', isOpen: true }); break;

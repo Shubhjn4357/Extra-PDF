@@ -91,9 +91,14 @@ const SinglePage = React.memo(({
         }
     }, [mode, isActive, pageNum]);
 
-    // Long Press Logic
+    // Long Press Logic for Canvas
     const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
     const isLongPress = React.useRef(false);
+
+    // Long Press Logic for Annotations (separate from canvas)
+    const annLongPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const isAnnLongPress = React.useRef(false);
+    const pendingAnnContext = React.useRef<{ ann: any; clientX: number; clientY: number } | null>(null);
 
     const handleTouchStart = (e: React.TouchEvent) => {
         isLongPress.current = false;
@@ -120,6 +125,54 @@ const SinglePage = React.memo(({
         if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
+        }
+        // Also clear annotation long press on move
+        if (annLongPressTimer.current) {
+            clearTimeout(annLongPressTimer.current);
+            annLongPressTimer.current = null;
+        }
+    };
+
+    /**
+     * Long press handlers for annotation elements
+     * On touch devices, context menu shows after 500ms hold (not single tap)
+     */
+    const handleAnnotationTouchStart = (e: React.TouchEvent, ann: any) => {
+        isAnnLongPress.current = false;
+        const touch = e.touches[0];
+        const { clientX, clientY } = touch;
+
+        // Store pending context for later
+        pendingAnnContext.current = { ann, clientX, clientY };
+
+        // Start long press timer
+        annLongPressTimer.current = setTimeout(() => {
+            isAnnLongPress.current = true;
+            if (pendingAnnContext.current) {
+                onContextMenu(
+                    { clientX: pendingAnnContext.current.clientX, clientY: pendingAnnContext.current.clientY, preventDefault: () => { }, stopPropagation: () => { } },
+                    pendingAnnContext.current.ann.id,
+                    pendingAnnContext.current.ann.type
+                );
+            }
+        }, 500);
+
+        // Also handle the normal drag start
+        onAnnotationMouseDown(e, ann, 'drag');
+    };
+
+    const handleAnnotationTouchEnd = () => {
+        if (annLongPressTimer.current) {
+            clearTimeout(annLongPressTimer.current);
+            annLongPressTimer.current = null;
+        }
+        pendingAnnContext.current = null;
+    };
+
+    const handleAnnotationTouchMove = () => {
+        if (annLongPressTimer.current) {
+            clearTimeout(annLongPressTimer.current);
+            annLongPressTimer.current = null;
         }
     };
 
@@ -221,7 +274,9 @@ const SinglePage = React.memo(({
                                         zIndex: 20
                                     }}
                                     onMouseDown={(e) => onAnnotationMouseDown(e, ann, 'drag')}
-                                    onTouchStart={(e) => onAnnotationMouseDown(e, ann, 'drag')}
+                                    onTouchStart={(e) => handleAnnotationTouchStart(e, ann)}
+                                    onTouchEnd={handleAnnotationTouchEnd}
+                                    onTouchMove={handleAnnotationTouchMove}
                                     onMouseEnter={() => mode === 'eraser' && removeAnnotation(ann.id)}
                                     onContextMenu={(e) => {
                                         e.preventDefault(); e.stopPropagation();
