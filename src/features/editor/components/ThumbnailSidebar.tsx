@@ -6,7 +6,8 @@ import { useFileStore } from '@/store/useFileStore';
 
 const PDFDocument = dynamic(async () => {
     const mod = await import('react-pdf');
-    if (typeof window !== 'undefined') mod.pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${mod.pdfjs.version}/build/pdf.worker.min.mjs`;
+
+    // Worker initialized globally
     return mod.Document;
 }, { ssr: false });
 

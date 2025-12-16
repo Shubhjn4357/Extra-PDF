@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { AIInput } from '@/components/ui/AIInput';
 import { useFileStore } from '@/store/useFileStore';
 import { SettingsDialog } from '@/components/ui/SettingsDialog';
@@ -14,11 +14,6 @@ import { checkEncryption, decryptPdf } from '@/services/tools/securityTools';
 
 export const LandingPage: React.FC = () => {
     const router = useRouter();
-
-    useEffect(() => {
-        // Initialize worker locally
-        import('@/utils/pdfWorker').then(({ initPdfWorker }) => initPdfWorker());
-    }, []);
     const { setFile } = useFileStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragOver, setIsDragOver] = useState(false);
@@ -49,7 +44,7 @@ export const LandingPage: React.FC = () => {
                 // Fix: Persist immediately
                 await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
 
-                router.push('/editor/cursor');
+                router.push('/editor');
                 return;
             }
 
@@ -68,7 +63,7 @@ export const LandingPage: React.FC = () => {
                 // Fix: Persist immediately to avoid race condition on router push
                 await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
 
-                router.push('/editor/cursor');
+                router.push('/editor');
                 return;
             }
             alert("Please upload a PDF or Images 📁");
@@ -85,17 +80,77 @@ export const LandingPage: React.FC = () => {
 
         try {
             // Decrypt and set file
-            const decryptedFile = await decryptPdf(passwordDialog.file, password);
+            const decryptedFileBytes = await decryptPdf(passwordDialog.file, password);
+            const decryptedFile = new File([decryptedFileBytes], passwordDialog.file.name, { type: 'application/pdf' });
             setFile(decryptedFile);
 
             // Persist state immediately
             await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
 
             setPasswordDialog({ isOpen: false, file: null });
-            router.push('/editor/cursor');
+            router.push('/editor');
         } catch (e) {
             alert("Failed to unlock PDF. Please check the password.");
             console.error(e);
+        }
+    };
+
+    const generatePdfFromAi = async (text: string) => {
+        setIsProcessing(true);
+        try {
+            // 1. Get HTML content from Gemini
+            const { generatePDFContent } = await import('@/services/geminiService');
+            const htmlContent = await generatePDFContent(text);
+
+            // 2. Render to PDF using html2canvas + jspdf
+            // Create a temporary container
+            const container = document.createElement('div');
+            container.innerHTML = htmlContent;
+            container.style.position = 'fixed';
+            container.style.top = '-9999px';
+            container.style.left = '-9999px';
+            container.style.width = '794px'; // A4 width at 96 DPI (approx)
+            container.style.backgroundColor = 'white';
+            document.body.appendChild(container);
+
+            const { default: html2canvas } = await import('html2canvas');
+            const { jsPDF } = await import('jspdf');
+
+            const canvas = await html2canvas(container, {
+                scale: 2, // Better quality
+                useCORS: true,
+                logging: false
+            });
+
+            document.body.removeChild(container);
+
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const pdf = new jsPDF({
+                orientation: 'p',
+                unit: 'pt',
+                format: 'a4'
+            });
+
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+
+            // 3. Convert to File and Set
+            const pdfBlob = pdf.output('blob');
+            const file = new File([pdfBlob], "ai_generated_document.pdf", { type: "application/pdf" });
+
+            setFile(file);
+            await import('@/store/useFileStore').then(({ useFileStore }) => useFileStore.getState().persistState());
+
+            router.push('/editor');
+
+        } catch (error) {
+            console.error("AI Generation Failed:", error);
+            alert("Failed to generate document. Please check your API usage or try again.");
+        } finally {
+            setIsProcessing(false);
         }
     };
 
@@ -121,7 +176,7 @@ export const LandingPage: React.FC = () => {
                     <div className="w-10 h-10 bg-gradient-to-tr from-red-600 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
                         <FileText className="text-white w-6 h-6" />
                     </div>
-                    <span className="text-xl font-bold tracking-tight">ExtraPDF</span>
+                    <span className="text-lg font-bold tracking-tight">ExtraPDF</span>
                 </div>
                 <button onClick={() => setIsSettingsOpen(true)} className="p-3 rounded-full bg-white/30 dark:bg-black/30 backdrop-blur-md border border-white/20 hover:bg-white/50 transition-all">
                     <Settings className="w-5 h-5" />
@@ -129,15 +184,15 @@ export const LandingPage: React.FC = () => {
             </header>
 
             {/* Main */}
-            <main className="flex-1 flex flex-col items-center justify-center px-4 relative z-10 max-w-5xl mx-auto w-full gap-8">
+            <main className="flex-1 flex flex-col items-center justify-center px-4 relative z-10 max-w-5xl mx-auto w-full gap-4">
                 <div className="text-center space-y-4 animate-in slide-in-from-bottom-8 duration-700">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-2">
                         <Sparkles className="w-3 h-3" /> AI Powered Editor
                     </div>
-                    <h1 className="text-5xl md:text-7xl font-bold tracking-tighter drop-shadow-sm">
+                    <h1 className="text-4xl md:text-6xl font-bold tracking-tighter drop-shadow-sm">
                         Contextual <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-orange-600">Intelligence</span>
                     </h1>
-                    <p className="text-lg md:text-2xl text-muted-foreground/80 max-w-2xl mx-auto font-light leading-relaxed">
+                    <p className="text-lg md:text-xl text-muted-foreground/80 max-w-2xl mx-auto font-light leading-relaxed">
                         Chat with your documents, edit text, and organize pages magically ✨
                     </p>
                 </div>
@@ -150,7 +205,7 @@ export const LandingPage: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()}
                     className={`
                 w-full max-w-2xl aspect-[3/1] rounded-[2.5rem] border-2 border-dashed transition-all duration-300 cursor-pointer
-                flex flex-col items-center justify-center gap-4 group backdrop-blur-xl shadow-2xl relative overflow-hidden
+                flex flex-col items-center mb-20 md:mb-24 justify-center gap-4 group backdrop-blur-xl shadow-2xl relative overflow-hidden
                 ${isDragOver
                             ? 'border-primary bg-primary/10 scale-105 shadow-primary/20'
                             : 'border-white/20 bg-white/40 dark:bg-black/20 hover:bg-white/50 hover:border-primary/30'
@@ -168,10 +223,10 @@ export const LandingPage: React.FC = () => {
                         p-6 rounded-full shadow-lg transition-transform duration-500
                         ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-secondary text-foreground group-hover:scale-110'}
                     `}>
-                                <Upload className="w-8 h-8" />
+                                    <Upload className="size-4 md:size-8" />
                             </div>
                             <div className="text-center">
-                                <p className="font-bold text-lg">Drop PDF or Images</p>
+                                    <p className="font-bold  md:text-lg">Drop PDF or Images</p>
                                 <p className="text-xs text-muted-foreground mt-1">Combine multiple files instantly</p>
                             </div>
                         </>
@@ -180,7 +235,11 @@ export const LandingPage: React.FC = () => {
 
                 {/* Floating Input */}
                 <div className="fixed bottom-8 w-full max-w-xl px-4 z-50 animate-in slide-in-from-bottom-10 delay-300">
-                    <AIInput onSubmit={() => fileInputRef.current?.click()} placeholder="Ask to summarize or edit a document..." />
+                    <AIInput
+                        onSubmit={(text) => generatePdfFromAi(text)}
+                        isThinking={isProcessing}
+                        placeholder="Ask to create a document (e.g. 'Resume for a Designer')..."
+                    />
                 </div>
             </main>
         </div>

@@ -1,27 +1,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import dynamic from 'next/dynamic';
-import { pdfjs ,Document,Page} from 'react-pdf';
-// Dynamic Import for PDF Components to avoid SSR/Worker issues
-const PDFDocument = dynamic(async () => {
-    if (typeof window !== 'undefined') pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-    return Document;
-}, { ssr: false });
-const PDFPage = dynamic(async () => {
-    return Page;
-}, { ssr: false });
+import { pdfjs, Document } from 'react-pdf';
 
-import { DndProvider, useDrop } from 'react-dnd';
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TouchBackend } from 'react-dnd-touch-backend';
 import { useFileStore } from '@/store/useFileStore';
 import { EditorMode } from '@/types';
-import { ContextMenu } from './ContextMenu';
-import { Maximize2, ZoomIn, ZoomOut, ScanText } from 'lucide-react';
-import { TextBlock } from './components/TextBlock';
 import SinglePage from './components/SinglePage';
-
+import { ContextMenu } from './components/ContextMenu';
 interface PDFCanvasProps {
     zoom: number;
     setZoom: (z: number) => void;
@@ -145,12 +134,12 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             if (interactionState === 'drawing' && dragStart) {
                 if ((mode === 'draw' || mode === 'sign') && currentPath.length > 2) {
                     addAnnotation({
-                        id: Date.now().toString(), page: dragStart.page, type: mode === 'sign' ? 'signature' : 'drawing',
+                        id: crypto.randomUUID(), page: dragStart.page, type: mode === 'sign' ? 'signature' : 'drawing',
                         points: currentPath, color: mode === 'sign' ? '#000000' : drawColor, thickness: mode === 'sign' ? 2 : brushSize
                     });
                 } else if ((mode === 'whiteout' || mode === 'replace' || mode === 'redact') && currentRect && currentRect.w > 5) {
                     addAnnotation({
-                        id: Date.now().toString() + '_bg', page: dragStart.page, type: mode === 'redact' ? 'redact' : 'whiteout',
+                        id: crypto.randomUUID(), page: dragStart.page, type: mode === 'redact' ? 'redact' : 'whiteout',
                         x: currentRect.x, y: currentRect.y, width: currentRect.w, height: currentRect.h
                     });
                 } else if (mode === 'crop' && currentRect && currentRect.w > 20 && onCropApply) {
@@ -193,7 +182,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
         if (mode === 'edit_text') return;
 
         // Check tool compatibility for interaction
-        const isInteractiveTool = ['text', 'cursor', 'draw', 'whiteout', 'sign', 'crop', 'image', 'stamp_remover'].includes(mode);
+        const isInteractiveTool = ['text', 'cursor', 'draw', 'whiteout', 'sign', 'crop', 'image', 'stamp_remover', 'redact'].includes(mode);
         if (!isInteractiveTool) return;
 
         const pageEl = document.getElementById(`page-${pageNum}-overlay`);
@@ -211,8 +200,9 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             else setCurrentRect({ ...coords, w: 0, h: 0, page: pageNum });
         } else if (mode === 'text') {
             // Place Text
+            const newId = crypto.randomUUID();
             addAnnotation({
-                id: Date.now().toString(),
+                id: newId,
                 page: pageNum,
                 type: 'text',
                 x: coords.x,
@@ -222,7 +212,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                 size: textStyle.size,
                 ...textStyle
             });
-            setEditingId(Date.now().toString());
+            setEditingId(newId);
         } else if (mode === 'image' && pendingImage && onImagePlaced) {
             // Place Image
             if (placingImageRef.current) return;
@@ -231,7 +221,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
             const img = new Image();
             img.onload = () => {
                 addAnnotation({
-                    id: Date.now().toString(), page: pageNum, type: 'image',
+                    id: crypto.randomUUID(), page: pageNum, type: 'image',
                     x: coords.x - 50, y: coords.y - 50, width: 100, height: 100 * (img.height / img.width),
                     dataUrl: pendingImage
                 });
@@ -276,7 +266,7 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                 className={`w-full h-full relative ${mode === 'text' ? 'mode-edit' : ''}`}
                 onClick={() => setContextMenu(null)}
             >
-                <PDFDocument file={file} onLoadSuccess={({ numPages }) => setNumPages(numPages)} className="flex flex-col gap-6 items-center">
+                <Document file={file} onLoadSuccess={({ numPages }) => setNumPages(numPages)} className="flex flex-col gap-6 items-center">
                     {Array.from(new Array(numPages), (_, index) => {
                         const pageNum = index + 1;
                         const rotation = pageRotations[pageNum] || 0;
@@ -310,11 +300,33 @@ export const PDFCanvas: React.FC<PDFCanvasProps> = ({
                                 onBlockUpdate={(id: string, text: string, x: number, y: number) => updateBlock(id, { text, x, y })}
                                 onBlockDelete={(id: string) => deleteBlock(id)}
                                 scanPage={scanPageForBlocks}
+                                onEditAnnotation={(id) => setEditingId(id)}
                             />
                         );
                     })}
-                </PDFDocument>
-                {/* ... controls ... */}
+                </Document>
+
+
+                {/* Context Menu */}
+                {contextMenu && (
+                    <>
+                        <div className="fixed inset-0 z-[999]" onClick={() => setContextMenu(null)} />
+                        <ContextMenu
+                            x={contextMenu.x}
+                            y={contextMenu.y}
+                            type={contextMenu.type}
+                            onClose={() => setContextMenu(null)}
+                            onAction={(action) => {
+                                if (action === 'delete' && contextMenu.id) {
+                                    removeAnnotation(contextMenu.id);
+                                } else if (action === 'edit' && contextMenu.id) {
+                                    setEditingId(contextMenu.id);
+                                }
+                                setContextMenu(null);
+                            }}
+                        />
+                    </>
+                )}
             </div>
         </DndProvider>
     );

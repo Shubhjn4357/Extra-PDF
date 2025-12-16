@@ -1,4 +1,4 @@
-import '@/utils/polyfill';
+
 import { create } from 'zustand';
 import { Annotation, EditableBlock } from '@/types';
 // @ts-ignore
@@ -35,7 +35,7 @@ interface FileState {
 
   // Actions
   setFile: (file: File | null) => void;
-  replaceFile: (newFileBytes: Uint8Array, name?: string) => void;
+  replaceFile: (newFileBytes: Uint8Array, name?: string, keepAnnotations?: boolean) => void;
   setPdfText: (text: string) => void;
   addAnnotation: (ann: Annotation) => void;
   updateAnnotation: (id: string, val: Partial<Annotation>) => void;
@@ -99,12 +99,22 @@ export const useFileStore = create<FileState>((set, get) => {
       file, fileName: file?.name || null, annotations: [], editableBlocks: [], pageRotations: {}, pdfText: "", isRestoring: false, history: [], future: []
     }),
 
-    replaceFile: (newFileBytes, name) => {
-      const currentFile = get().file;
-      const newName = name || currentFile?.name || 'document.pdf';
+    replaceFile: (newFileBytes, name, keepAnnotations = false) => {
+      const newName = name || get().fileName || 'modified.pdf';
       const blob = new Blob([Buffer.from(newFileBytes) as any], { type: 'application/pdf' });
       const newFile = new File([blob], newName, { type: 'application/pdf' });
-      set({ file: newFile, fileName: newName, annotations: [], editableBlocks: [], pageRotations: {}, pdfText: "", history: [], future: [] });
+      // Clean history but optional keep annotations
+      set(state => ({
+        file: newFile,
+        fileName: newName,
+        annotations: keepAnnotations ? state.annotations : [],
+        // editableBlocks: keepAnnotations ? state.editableBlocks : [], // Blocks usually invalidated by page replacement but let's clear them to be safe or re-scan? Safest to clear.
+        editableBlocks: [],
+        pageRotations: {},
+        pdfText: "",
+        history: [],
+        future: []
+      }));
       try { saveFileToIDB('lastFile', newFileBytes, newName); } catch (e) { }
     },
 
@@ -155,9 +165,6 @@ export const useFileStore = create<FileState>((set, get) => {
     restoreState: async () => {
       set({ isRestoring: true });
       try {
-        if (typeof window !== 'undefined') {
-          import('@/utils/pdfWorker').then(({ initPdfWorker }) => initPdfWorker());
-        }
         const raw = localStorage.getItem('extrapdf_state');
         if (raw) {
           const parsed = JSON.parse(raw);

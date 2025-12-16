@@ -1,6 +1,7 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { EditorMode } from '@/types';
 import {
     Download, CheckCircle2, Eraser,
@@ -44,6 +45,12 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
     drawColor, setDrawColor, brushSize, setBrushSize,
     textStyle, setTextStyle, onUndo, onRedo
 }) => {
+
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const colors = ['#000000', '#FF0000', '#0000FF', '#008000', '#FFA500', '#800080'];
 
@@ -133,18 +140,21 @@ export const EditorToolbar: React.FC<ToolbarProps> = ({
             </div>
 
             {/* Center-Right: Common Controls (Undo/Zoom) */}
-            <div className="flex items-center gap-2 bg-white/40 dark:bg-black/40 rounded-full p-1 border border-white/10 shadow-sm ml-auto">
-                <button onClick={onUndo} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-muted-foreground hover:text-foreground transition-colors" title="Undo (Ctrl+Z)">
-                    <Undo className="w-4 h-4" />
-                </button>
-                <button onClick={onRedo} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-muted-foreground hover:text-foreground transition-colors" title="Redo (Ctrl+Y)">
-                    <Redo className="w-4 h-4" />
-                </button>
-                <div className="w-px h-4 bg-border mx-1" />
-                <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full"><Minus className="w-3 h-3" /></button>
-                <span className="text-xs font-bold w-8 text-center">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom(Math.min(3, zoom + 0.1))} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full"><Plus className="w-3 h-3" /></button>
-            </div>
+            {mounted && createPortal(
+                <div className="flex fixed right-4 bottom-4 items-center gap-2 bg-white/40 dark:bg-black/40 backdrop-blur-md rounded-full p-1 border border-white/10 shadow-sm z-50">
+                    <button onClick={onUndo} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-muted-foreground hover:text-foreground transition-colors" title="Undo (Ctrl+Z)">
+                        <Undo className="w-4 h-4" />
+                    </button>
+                    <button onClick={onRedo} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full text-muted-foreground hover:text-foreground transition-colors" title="Redo (Ctrl+Y)">
+                        <Redo className="w-4 h-4" />
+                    </button>
+                    <div className="w-px h-4 bg-border mx-1" />
+                    <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full"><Minus className="w-3 h-3" /></button>
+                    <span className="text-xs font-bold w-8 text-center">{Math.round(zoom * 100)}%</span>
+                    <button onClick={() => setZoom(Math.min(3, zoom + 0.1))} className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full"><Plus className="w-3 h-3" /></button>
+                </div>,
+                document.body
+            )}
 
             {/* Right: Actions */}
             <div className="flex items-center gap-2 flex-none justify-end">

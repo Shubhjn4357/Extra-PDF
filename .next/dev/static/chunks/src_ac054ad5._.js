@@ -624,9 +624,8 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 history: [],
                 future: []
             }),
-        replaceFile: (newFileBytes, name)=>{
-            const currentFile = get().file;
-            const newName = name || currentFile?.name || 'document.pdf';
+        replaceFile: (newFileBytes, name, keepAnnotations = false)=>{
+            const newName = name || get().fileName || 'modified.pdf';
             const blob = new Blob([
                 __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$buffer$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Buffer"].from(newFileBytes)
             ], {
@@ -637,16 +636,18 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
             ], newName, {
                 type: 'application/pdf'
             });
-            set({
-                file: newFile,
-                fileName: newName,
-                annotations: [],
-                editableBlocks: [],
-                pageRotations: {},
-                pdfText: "",
-                history: [],
-                future: []
-            });
+            // Clean history but optional keep annotations
+            set((state)=>({
+                    file: newFile,
+                    fileName: newName,
+                    annotations: keepAnnotations ? state.annotations : [],
+                    // editableBlocks: keepAnnotations ? state.editableBlocks : [], // Blocks usually invalidated by page replacement but let's clear them to be safe or re-scan? Safest to clear.
+                    editableBlocks: [],
+                    pageRotations: {},
+                    pdfText: "",
+                    history: [],
+                    future: []
+                }));
             try {
                 (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$storage$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["saveFileToIDB"])('lastFile', newFileBytes, newName);
             } catch (e) {}
@@ -746,9 +747,6 @@ const useFileStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_mo
                 isRestoring: true
             });
             try {
-                if ("TURBOPACK compile-time truthy", 1) {
-                    __turbopack_context__.A("[project]/src/utils/pdfWorker.ts [app-client] (ecmascript, async loader)").then(({ initPdfWorker })=>initPdfWorker());
-                }
                 const raw = localStorage.getItem('extrapdf_state');
                 if (raw) {
                     const parsed = JSON.parse(raw);
@@ -1797,16 +1795,19 @@ const updateMetadata = async (file, meta)=>{
 const checkEncryption = async (file)=>{
     try {
         const arrayBuffer = await file.arrayBuffer();
-        const { pdfjs } = await __turbopack_context__.A("[project]/node_modules/.pnpm/react-pdf@10.2.0_@types+rea_1e1f33a3307c4ead238fa08a3f15b507/node_modules/react-pdf/dist/index.js [app-client] (ecmascript, async loader)");
-        // Try loading without password
-        await pdfjs.getDocument(arrayBuffer).promise;
+        // Try loading without password using pdf-lib
+        await __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$pdf$2d$lib$40$1$2e$17$2e$1$2f$node_modules$2f$pdf$2d$lib$2f$es$2f$api$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PDFDocument"].load(arrayBuffer);
         return false;
     } catch (error) {
-        console.log("CheckEncryption Error:", error.name, error.message, error);
-        if (error.name === 'PasswordException' || error.password || error.code === 1) {
+        console.log("CheckEncryption Error:", error);
+        // pdf-lib throws if encrypted and no password provided
+        // We assume any load error on valid PDF might be encryption, or check message
+        if (error.message?.includes('Encrypted') || error.message?.includes('Password')) {
             return true;
         }
-        return false;
+        // If we can't determine, assume true to trigger password prompt? Or flase?
+        // Let's assume true if it fails to load, so we can try to unlock.
+        return true;
     }
 };
 const decryptPdf = async (file, password)=>{
@@ -1817,17 +1818,7 @@ const decryptPdf = async (file, password)=>{
             password
         });
         // Save without any encryption settings (removes it)
-        const decryptedBytes = await pdfDoc.save();
-        const blob = new Blob([
-            decryptedBytes
-        ], {
-            type: 'application/pdf'
-        });
-        return new File([
-            blob
-        ], file.name.replace('.pdf', '_decrypted.pdf'), {
-            type: 'application/pdf'
-        });
+        return await pdfDoc.save();
     } catch (e) {
         throw new Error("Invalid Password or Decryption Failed");
     }
@@ -1872,14 +1863,6 @@ var _s = __turbopack_context__.k.signature();
 const LandingPage = ()=>{
     _s();
     const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"])();
-    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
-        "LandingPage.useEffect": ()=>{
-            // Initialize worker locally
-            __turbopack_context__.A("[project]/src/utils/pdfWorker.ts [app-client] (ecmascript, async loader)").then({
-                "LandingPage.useEffect": ({ initPdfWorker })=>initPdfWorker()
-            }["LandingPage.useEffect"]);
-        }
-    }["LandingPage.useEffect"], []);
     const { setFile } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$store$2f$useFileStore$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useFileStore"])();
     const fileInputRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
     const [isDragOver, setIsDragOver] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
@@ -1909,7 +1892,7 @@ const LandingPage = ()=>{
                 setFile(file);
                 // Fix: Persist immediately
                 await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
-                router.push('/editor/cursor');
+                router.push('/editor');
                 return;
             }
             const imageFiles = files.filter((f)=>f.type.startsWith('image/'));
@@ -1930,7 +1913,7 @@ const LandingPage = ()=>{
                 setFile(newFile);
                 // Fix: Persist immediately to avoid race condition on router push
                 await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
-                router.push('/editor/cursor');
+                router.push('/editor');
                 return;
             }
             alert("Please upload a PDF or Images 📁");
@@ -1945,7 +1928,12 @@ const LandingPage = ()=>{
         if (!passwordDialog.file) return;
         try {
             // Decrypt and set file
-            const decryptedFile = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$tools$2f$securityTools$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["decryptPdf"])(passwordDialog.file, password);
+            const decryptedFileBytes = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$tools$2f$securityTools$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["decryptPdf"])(passwordDialog.file, password);
+            const decryptedFile = new File([
+                decryptedFileBytes
+            ], passwordDialog.file.name, {
+                type: 'application/pdf'
+            });
             setFile(decryptedFile);
             // Persist state immediately
             await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
@@ -1953,10 +1941,61 @@ const LandingPage = ()=>{
                 isOpen: false,
                 file: null
             });
-            router.push('/editor/cursor');
+            router.push('/editor');
         } catch (e) {
             alert("Failed to unlock PDF. Please check the password.");
             console.error(e);
+        }
+    };
+    const generatePdfFromAi = async (text)=>{
+        setIsProcessing(true);
+        try {
+            // 1. Get HTML content from Gemini
+            const { generatePDFContent } = await __turbopack_context__.A("[project]/src/services/geminiService.ts [app-client] (ecmascript, async loader)");
+            const htmlContent = await generatePDFContent(text);
+            // 2. Render to PDF using html2canvas + jspdf
+            // Create a temporary container
+            const container = document.createElement('div');
+            container.innerHTML = htmlContent;
+            container.style.position = 'fixed';
+            container.style.top = '-9999px';
+            container.style.left = '-9999px';
+            container.style.width = '794px'; // A4 width at 96 DPI (approx)
+            container.style.backgroundColor = 'white';
+            document.body.appendChild(container);
+            const { default: html2canvas } = await __turbopack_context__.A("[project]/node_modules/.pnpm/html2canvas@1.4.1/node_modules/html2canvas/dist/html2canvas.js [app-client] (ecmascript, async loader)");
+            const { jsPDF } = await __turbopack_context__.A("[project]/node_modules/.pnpm/jspdf@3.0.4/node_modules/jspdf/dist/jspdf.es.min.js [app-client] (ecmascript, async loader)");
+            const canvas = await html2canvas(container, {
+                scale: 2,
+                useCORS: true,
+                logging: false
+            });
+            document.body.removeChild(container);
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const pdf = new jsPDF({
+                orientation: 'p',
+                unit: 'pt',
+                format: 'a4'
+            });
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = imgProps.height * pdfWidth / imgProps.width;
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            // 3. Convert to File and Set
+            const pdfBlob = pdf.output('blob');
+            const file = new File([
+                pdfBlob
+            ], "ai_generated_document.pdf", {
+                type: "application/pdf"
+            });
+            setFile(file);
+            await __turbopack_context__.A("[project]/src/store/useFileStore.ts [app-client] (ecmascript, async loader)").then(({ useFileStore })=>useFileStore.getState().persistState());
+            router.push('/editor');
+        } catch (error) {
+            console.error("AI Generation Failed:", error);
+            alert("Failed to generate document. Please check your API usage or try again.");
+        } finally{
+            setIsProcessing(false);
         }
     };
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1971,7 +2010,7 @@ const LandingPage = ()=>{
                 className: "hidden"
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 104,
+                lineNumber: 159,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$ui$2f$SettingsDialog$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SettingsDialog"], {
@@ -1979,7 +2018,7 @@ const LandingPage = ()=>{
                 onClose: ()=>setIsSettingsOpen(false)
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 105,
+                lineNumber: 160,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$ui$2f$PasswordDialog$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["PasswordDialog"], {
@@ -1992,21 +2031,21 @@ const LandingPage = ()=>{
                 fileName: passwordDialog.file?.name || 'Document'
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 107,
+                lineNumber: 162,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "fixed top-[-20%] left-[-10%] w-[800px] h-[800px] bg-red-500/10 rounded-full blur-[120px] pointer-events-none animate-pulse"
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 115,
+                lineNumber: 170,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                 className: "fixed bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-orange-500/10 rounded-full blur-[100px] pointer-events-none"
             }, void 0, false, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 116,
+                lineNumber: 171,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("header", {
@@ -2021,26 +2060,26 @@ const LandingPage = ()=>{
                                     className: "text-white w-6 h-6"
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 122,
+                                    lineNumber: 177,
                                     columnNumber: 25
                                 }, ("TURBOPACK compile-time value", void 0))
                             }, void 0, false, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 121,
+                                lineNumber: 176,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0)),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
-                                className: "text-xl font-bold tracking-tight",
+                                className: "text-lg font-bold tracking-tight",
                                 children: "ExtraPDF"
                             }, void 0, false, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 124,
+                                lineNumber: 179,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0))
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 120,
+                        lineNumber: 175,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -2050,22 +2089,22 @@ const LandingPage = ()=>{
                             className: "w-5 h-5"
                         }, void 0, false, {
                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                            lineNumber: 127,
+                            lineNumber: 182,
                             columnNumber: 21
                         }, ("TURBOPACK compile-time value", void 0))
                     }, void 0, false, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 126,
+                        lineNumber: 181,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0))
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 119,
+                lineNumber: 174,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0)),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
-                className: "flex-1 flex flex-col items-center justify-center px-4 relative z-10 max-w-5xl mx-auto w-full gap-8",
+                className: "flex-1 flex flex-col items-center justify-center px-4 relative z-10 max-w-5xl mx-auto w-full gap-4",
                 children: [
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "text-center space-y-4 animate-in slide-in-from-bottom-8 duration-700",
@@ -2077,18 +2116,18 @@ const LandingPage = ()=>{
                                         className: "w-3 h-3"
                                     }, void 0, false, {
                                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                                        lineNumber: 135,
+                                        lineNumber: 190,
                                         columnNumber: 25
                                     }, ("TURBOPACK compile-time value", void 0)),
                                     " AI Powered Editor"
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 134,
+                                lineNumber: 189,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0)),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
-                                className: "text-5xl md:text-7xl font-bold tracking-tighter drop-shadow-sm",
+                                className: "text-4xl md:text-6xl font-bold tracking-tighter drop-shadow-sm",
                                 children: [
                                     "Contextual ",
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2096,27 +2135,27 @@ const LandingPage = ()=>{
                                         children: "Intelligence"
                                     }, void 0, false, {
                                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                                        lineNumber: 138,
+                                        lineNumber: 193,
                                         columnNumber: 36
                                     }, ("TURBOPACK compile-time value", void 0))
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 137,
+                                lineNumber: 192,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0)),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                className: "text-lg md:text-2xl text-muted-foreground/80 max-w-2xl mx-auto font-light leading-relaxed",
+                                className: "text-lg md:text-xl text-muted-foreground/80 max-w-2xl mx-auto font-light leading-relaxed",
                                 children: "Chat with your documents, edit text, and organize pages magically ✨"
                             }, void 0, false, {
                                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                                lineNumber: 140,
+                                lineNumber: 195,
                                 columnNumber: 21
                             }, ("TURBOPACK compile-time value", void 0))
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 133,
+                        lineNumber: 188,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2133,7 +2172,7 @@ const LandingPage = ()=>{
                         onClick: ()=>fileInputRef.current?.click(),
                         className: `
                 w-full max-w-2xl aspect-[3/1] rounded-[2.5rem] border-2 border-dashed transition-all duration-300 cursor-pointer
-                flex flex-col items-center justify-center gap-4 group backdrop-blur-xl shadow-2xl relative overflow-hidden
+                flex flex-col items-center mb-20 md:mb-24 justify-center gap-4 group backdrop-blur-xl shadow-2xl relative overflow-hidden
                 ${isDragOver ? 'border-primary bg-primary/10 scale-105 shadow-primary/20' : 'border-white/20 bg-white/40 dark:bg-black/20 hover:bg-white/50 hover:border-primary/30'}
             `,
                         children: isProcessing ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2143,7 +2182,7 @@ const LandingPage = ()=>{
                                     className: "w-12 h-12"
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 162,
+                                    lineNumber: 217,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0)),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2151,13 +2190,13 @@ const LandingPage = ()=>{
                                     children: "Crunching pixels... 🍪"
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 163,
+                                    lineNumber: 218,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0))
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                            lineNumber: 161,
+                            lineNumber: 216,
                             columnNumber: 25
                         }, ("TURBOPACK compile-time value", void 0)) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
                             children: [
@@ -2167,78 +2206,79 @@ const LandingPage = ()=>{
                         ${isDragOver ? 'bg-primary text-white scale-110' : 'bg-secondary text-foreground group-hover:scale-110'}
                     `,
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$lucide$2d$react$40$0$2e$561$2e$0_react$40$19$2e$2$2e$3$2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$upload$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Upload$3e$__["Upload"], {
-                                        className: "w-8 h-8"
+                                        className: "size-4 md:size-8"
                                     }, void 0, false, {
                                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                                        lineNumber: 171,
-                                        columnNumber: 33
+                                        lineNumber: 226,
+                                        columnNumber: 37
                                     }, ("TURBOPACK compile-time value", void 0))
                                 }, void 0, false, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 167,
+                                    lineNumber: 222,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0)),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "text-center",
                                     children: [
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
-                                            className: "font-bold text-lg",
+                                            className: "font-bold  md:text-lg",
                                             children: "Drop PDF or Images"
                                         }, void 0, false, {
                                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                                            lineNumber: 174,
-                                            columnNumber: 33
+                                            lineNumber: 229,
+                                            columnNumber: 37
                                         }, ("TURBOPACK compile-time value", void 0)),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                             className: "text-xs text-muted-foreground mt-1",
                                             children: "Combine multiple files instantly"
                                         }, void 0, false, {
                                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                                            lineNumber: 175,
+                                            lineNumber: 230,
                                             columnNumber: 33
                                         }, ("TURBOPACK compile-time value", void 0))
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/features/home/LandingPage.tsx",
-                                    lineNumber: 173,
+                                    lineNumber: 228,
                                     columnNumber: 29
                                 }, ("TURBOPACK compile-time value", void 0))
                             ]
                         }, void 0, true)
                     }, void 0, false, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 146,
+                        lineNumber: 201,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0)),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                         className: "fixed bottom-8 w-full max-w-xl px-4 z-50 animate-in slide-in-from-bottom-10 delay-300",
                         children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$ui$2f$AIInput$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["AIInput"], {
-                            onSubmit: ()=>fileInputRef.current?.click(),
-                            placeholder: "Ask to summarize or edit a document..."
+                            onSubmit: (text)=>generatePdfFromAi(text),
+                            isThinking: isProcessing,
+                            placeholder: "Ask to create a document (e.g. 'Resume for a Designer')..."
                         }, void 0, false, {
                             fileName: "[project]/src/features/home/LandingPage.tsx",
-                            lineNumber: 183,
+                            lineNumber: 238,
                             columnNumber: 21
                         }, ("TURBOPACK compile-time value", void 0))
                     }, void 0, false, {
                         fileName: "[project]/src/features/home/LandingPage.tsx",
-                        lineNumber: 182,
+                        lineNumber: 237,
                         columnNumber: 17
                     }, ("TURBOPACK compile-time value", void 0))
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/features/home/LandingPage.tsx",
-                lineNumber: 132,
+                lineNumber: 187,
                 columnNumber: 13
             }, ("TURBOPACK compile-time value", void 0))
         ]
     }, void 0, true, {
         fileName: "[project]/src/features/home/LandingPage.tsx",
-        lineNumber: 103,
+        lineNumber: 158,
         columnNumber: 9
     }, ("TURBOPACK compile-time value", void 0));
 };
-_s(LandingPage, "ik39zm02Kd7KERbqafYF4adlOyU=", false, function() {
+_s(LandingPage, "ep2Vj3v6lOgP3R5GfCePojqKc4Q=", false, function() {
     return [
         __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f$next$40$16$2e$0$2e$10_$40$babel$2b$core$40$7$2e$_59b2c4e49353e66c503ff99109bd4451$2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"],
         __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$store$2f$useFileStore$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useFileStore"]

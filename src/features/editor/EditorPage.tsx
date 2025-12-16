@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { PDFCanvas } from './PDFCanvas';
+import { toast } from "sonner";
 import { useFileStore } from '@/store/useFileStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { EditorSidebar } from './components/EditorSidebar';
@@ -24,7 +24,12 @@ import * as Security from '@/services/tools/securityTools';
 import * as Convert from '@/services/tools/convertTools';
 import * as Optimize from '@/services/tools/optimizeTools';
 import { detectStamps, removeStampWithMask } from '@/services/geminiService';
+import dynamic from 'next/dynamic';
+import { useAIActions } from './actions/aiActions';
+import { useDocumentActions } from './actions/documentActions';
+import { useSecurityActions } from './actions/securityActions';
 
+const PDFCanvas = dynamic(() => import('./PDFCanvas').then(m => m.PDFCanvas), { ssr: false, loading: () => <div>Drawing The Canvas...</div> });
 export const EditorPage: React.FC = () => {
     const router = useRouter();
     const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation, editableBlocks, isRestoring, undo, redo } = useFileStore();
@@ -45,17 +50,10 @@ export const EditorPage: React.FC = () => {
     const [isThumbnailsOpen, setThumbnailsOpen] = useState(true);
     const [isThinkingOpen, setIsThinkingOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [isAIProcessing, setIsAIProcessing] = useState(false);
 
     // Selection State
     const [selectedAnnId, setSelectedAnnId] = useState<string | null>(null);
     const selectedAnnotation = annotations.find(a => a.id === selectedAnnId);
-
-    // Chat State
-    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-    const [isThinking, setIsThinking] = useState(false);
-    const chatSessionRef = useRef<any>(null);
-    const isFirstMsgRef = useRef(true);
 
     // Draw/Text State
     const [drawColor, setDrawColor] = useState('#000000');
@@ -89,6 +87,9 @@ export const EditorPage: React.FC = () => {
     const wordInputRef = useRef<HTMLInputElement>(null);
     const compareInputRef = useRef<HTMLInputElement>(null);
 
+    // Local processing state for non-AI actions
+    const [isBusy, setIsBusy] = useState(false);
+
     const [pendingImage, setPendingImage] = useState<string | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -103,9 +104,10 @@ export const EditorPage: React.FC = () => {
         const isDesktop = window.innerWidth >= 768;
         if (isDesktop) setSidebarOpen(true);
         else setThumbnailsOpen(false);
-
-        chatSessionRef.current = createChatSession();
-
+        if (navigator.serviceWorker.controller) {
+            console.log("Service Worker Active");
+        }
+        
         // Restore State
         (async () => {
             if (useFileStore.getState().isRestoring) {
@@ -132,21 +134,63 @@ export const EditorPage: React.FC = () => {
                 return;
             }
 
-            switch (e.key.toLowerCase()) {
+            const k = e.key.toLowerCase();
+            
+            // Shift + Alt Combos (Triple Keys)
+            if (e.altKey && e.shiftKey) {
+                if (k === 'u') { handleToolSelect({ id: 'force_unlock' } as any); return; }
+                if (k === 'p') { handleToolSelect({ id: 'pdf_to_ppt' } as any); return; }
+            }
+
+            // Alt + Key Combos
+            if (e.altKey) {
+                switch (k) {
+                    case 'p': handleToolSelect({ id: 'split' } as any); break;
+                    case 'l': handleToolSelect({ id: 'encrypt' } as any); break;
+                    case 'u': handleToolSelect({ id: 'unlock' } as any); break;
+                    case 'f': handleToolSelect({ id: 'flatten' } as any); break;
+                    case 'i': handleToolSelect({ id: 'metadata' } as any); break;
+                    case 'c': handleToolSelect({ id: 'compare' } as any); break;
+                    case 'w': handleToolSelect({ id: 'pdf_to_word' } as any); break;
+                    case 'j': handleToolSelect({ id: 'pdf_to_jpg' } as any); break;
+                    case 'x': handleToolSelect({ id: 'pdf_to_excel' } as any); break;
+                    case 'o': handleToolSelect({ id: 'ocr_pdf' } as any); break;
+                    case 'h': handleToolSelect({ id: 'html_to_pdf' } as any); break;
+                }
+                return;
+            }
+
+            // Shift + Key Combos
+            if (e.shiftKey) {
+                switch (k) {
+                    case 'm': handleToolSelect({ id: 'merge' } as any); break;
+                    case 'delete': handleToolSelect({ id: 'remove_empty' } as any); break;
+                    case 'r': handleToolSelect({ id: 'rotate' } as any); break;
+                    case 'd': handleToolSelect({ id: 'delete_page' } as any); break;
+                    case 'n': handleToolSelect({ id: 'page_numbers' } as any); break;
+                    case 'f': handleToolSelect({ id: 'repair' } as any); break;
+                    case 'c': handleToolSelect({ id: 'compress' } as any); break;
+                    case 't': handleToolSelect({ id: 'edit_text' } as any); break;
+                }
+                return;
+            }
+
+            // Single Key Shortcuts
+            switch (k) {
                 case 'v': case 'escape': handleToolSelect({ id: 'cursor' } as any); break;
                 case 't': handleToolSelect({ id: 'text' } as any); break;
                 case 'd': handleToolSelect({ id: 'draw' } as any); break;
                 case 'w': handleToolSelect({ id: 'whiteout' } as any); break;
                 case 'x': handleToolSelect({ id: 'crop' } as any); break;
                 case 's': handleToolSelect({ id: 'sign' } as any); break;
-                case 'r': handleToolSelect({ id: 'replace' } as any); break; 
+                case 'r': handleToolSelect({ id: 'redact' } as any); break; 
                 case 'e': handleToolSelect({ id: 'eraser' } as any); break;
                 case 'i': handleToolSelect({ id: 'add_image' } as any); break;
                 case 'm': handleToolSelect({ id: 'watermark' } as any); break;
                 case 'c': handleToolSelect({ id: 'stamp_remover' } as any); break;
                 case 'o': handleToolSelect({ id: 'reorder' } as any); break;
-                case 'p': if (e.altKey) handleToolSelect({ id: 'split' } as any); break;
             }
+
         };
 
         window.addEventListener('keydown', handleKeyDown);
@@ -169,66 +213,35 @@ export const EditorPage: React.FC = () => {
         }
     }, [modal.type, settings.defaultPassword]);
 
-    /* --- Chat & AI Implementation --- */
-    const handleChatSendMessage = async (text: string) => {
-        if (!chatSessionRef.current) return;
-        setIsThinking(true);
-        const userMsgId = Date.now().toString();
-        setChatMessages(prev => [...prev, { id: userMsgId, role: 'user', text }]);
-
-        const finalPrompt = buildFinalPrompt(pdfText, text, isFirstMsgRef.current, settings);
-        isFirstMsgRef.current = false;
-
-        const modelMsgId = (Date.now() + 1).toString();
-        setChatMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
-
-        await streamResponse(
-            chatSessionRef.current,
-            finalPrompt,
-            (chunk) => {
-                setChatMessages(prev => prev.map(m => m.id === modelMsgId ? { ...m, text: m.text + chunk } : m));
-            },
-            async (toolCall) => await handleAIToolExecution(toolCall)
-        );
-        setIsThinking(false);
-    };
-
-    const handleAIToolExecution = async (toolCall: any) => {
-        const { name, args } = toolCall;
-        console.log(`[AI Tool] Executing ${name}`, args);
-        try {
-            switch (name) {
-                case 'edit_pdf_add_text':
-                    addAnnotation({
-                        id: Date.now().toString(), page: args.page, type: 'text', x: args.x || 100, y: args.y || 100, text: args.text, color: args.color || '#000000', size: args.fontSize || 14
-                    });
-                    return "Text added successfully.";
-                case 'clean_page_image':
-                    await handleStampRemove(args.page);
-                    return "Stamp removal process completed.";
-                case 'organize_rotate_page':
-                    rotatePage(args.page);
-                    return `Page ${args.page} rotated.`;
-                case 'organize_delete_page':
-                    if (args.pages && args.pages.length > 0) {
-                        setIsAIProcessing(true);
-                        const newBytes = await Organize.deletePages(file!, args.pages);
-                        replaceFile(newBytes);
-                        setIsAIProcessing(false);
-                        return `Pages ${args.pages.join(', ')} deleted.`;
-                    }
-                    return "No pages specified.";
-                case 'get_page_count':
-                    return `The document has ${numPages} pages.`;
-                default:
-                    return "Tool not implemented.";
-            }
-        } catch (e) {
-            console.error("AI Tool Execution Error", e);
-            setIsAIProcessing(false);
-            return "Error executing tool.";
+    // AI Hook
+    const { 
+        chatMessages, isThinking, isAIProcessing, 
+        handleChatSendMessage, handleStampRemove, initializeChat 
+    } = useAIActions({
+        setStatusMsg,
+        setMode,
+    });
+    // Document Actions Hook
+    const { handleFile, executeDirectAction } = useDocumentActions({
+        setIsBusy,
+        setStatusMsg,
+        setMode,
+        setPendingImage,
+        activePage,
+        refs: {
+            merge: mergeInputRef,
+            image: imageInputRef,
+            word: wordInputRef,
+            modal: setModal
         }
-    };
+    });
+
+    const { bruteForceUnlock } = useSecurityActions({ setIsBusy, setStatusMsg });
+
+    // Effect to init chat
+    useEffect(() => {
+        initializeChat();
+    }, []);
 
     /* --- Editor Handlers --- */
     const handleToolSelect = (tool: Tool) => {
@@ -248,86 +261,24 @@ export const EditorPage: React.FC = () => {
             if (window.innerWidth < 768) setSidebarOpen(false);
             return;
         }
+        if (tool.id === 'force_unlock') {
+            bruteForceUnlock();
+            return;
+        }
         executeDirectAction(tool.id);
         if (window.innerWidth < 768) setSidebarOpen(false);
     };
 
-    const executeDirectAction = async (id: string) => {
-        try {
-            if (!file) return;
-            switch (id) {
-                case 'rotate': rotatePage(activePage); setStatusMsg(`Page ${activePage} Rotated 🔄`); break;
-                case 'merge': mergeInputRef.current?.click(); break;
-                case 'add_image': imageInputRef.current?.click(); break;
-                case 'word_to_pdf': wordInputRef.current?.click(); break;
-                case 'compress':
-                    setStatusMsg("Compressing PDF... 🗜️");
-                    try {
-                        const compressedBytes = await Optimize.compressPdf(file);
-                        replaceFile(compressedBytes, file.name.replace('.pdf', '_compressed.pdf'));
-                        setStatusMsg("Compressed! 📉");
-                        // Also persist this change to history? replaceFile clears history currently.
-                        // Ideally compress should add to history, but replaceFile logic implies new doc.
-                    } catch (e) { alert("Compression Failed"); }
-                    break;
-                case 'remove_empty':
-                    setStatusMsg("Scanning for blank pages... 🔍");
-                    const { pdfBytes, removedCount } = await Organize.removeEmptyPages(file);
-                    if (pdfBytes && removedCount > 0) {
-                        replaceFile(pdfBytes);
-                        setStatusMsg(`Removed ${removedCount} empty pages 🗑️`);
-                    } else { setStatusMsg("No empty pages found 🤷"); }
-                    break;
-                case 'flatten':
-                    replaceFile(await Security.flattenPdf(file), 'flattened.pdf'); setStatusMsg("PDF Flattened 📄"); break;
-                case 'repair':
-                    setStatusMsg("Repairing... 🔧"); replaceFile(await Convert.repairPdf(file), 'repaired.pdf'); setStatusMsg("PDF Repaired ✅"); break;
-                case 'page_numbers':
-                    replaceFile(await Organize.addPageNumbers(file), 'numbered.pdf'); setStatusMsg("Added Numbers 🔢"); break;
-                case 'pdf_to_word': download(await Convert.createDocxFromText(pdfText), 'converted.docx'); break;
-                case 'pdf_to_excel': setStatusMsg("Extracting Tables... 📊"); download(await Convert.createXlsxFromPdf(file), 'tables.xlsx'); break;
-                case 'pdf_to_ppt': setStatusMsg("Creating Slides... 🎞️"); download(await Convert.createPptxFromPdf(file), 'presentation.pptx'); break;
-                case 'ocr_pdf': setStatusMsg("Scanning... 👁️"); download(new Blob([await Convert.ocrPdf(file)], { type: 'text/plain' }), 'extracted_text.txt'); break;
-                case 'pdf_to_jpg':
-                    setStatusMsg("Converting... 🖼️");
-                    const imgs = await Convert.pdfToImages(file);
-                    if (imgs.length > 0) {
-                        const a = document.createElement('a'); a.href = imgs[0]; a.download = `page_1.jpg`; a.click(); setStatusMsg('Saved JPG ✅');
-                    } break;
-                case 'unlock':
-                    setStatusMsg("Removing Password... 🔓");
-                    const unlockedBytes = await file.arrayBuffer();
-                    download(new Uint8Array(unlockedBytes), 'unlocked.pdf'); // Assuming file in memory is decrypted
-                    break;
-            }
-        } catch (e) { console.error(e); alert('Action Failed: ' + (e as Error).message); }
-    };
 
-    const handleStampRemove = async (pageNum: number, rect?: { x: number, y: number, w: number, h: number }) => {
-        if (!file) return;
-        setIsAIProcessing(true);
-        setStatusMsg(rect ? "AI Inpainting: Removing area..." : "AI Vision: Auto-detecting artifacts...");
-        try {
-            const imgBase64 = await Convert.getPageImage(file, pageNum);
-            let boxes: any[] = [];
-            if (rect) {
-                const scale = 1.5; 
-                boxes = [{ x: Math.floor(rect.x * scale), y: Math.floor(rect.y * scale), w: Math.floor(rect.w * scale), h: Math.floor(rect.h * scale) }];
-            } else {
-                const autoBoxes = await detectStamps(imgBase64);
-                if (autoBoxes.length === 0) { setIsAIProcessing(false); setStatusMsg("AI: No stamps detected."); return; }
-                const imgObj = new Image(); imgObj.src = imgBase64; await imgObj.decode();
-                boxes = autoBoxes.map(b => ({ x: Math.floor(b.x * imgObj.width), y: Math.floor(b.y * imgObj.height), w: Math.floor(b.width * imgObj.width), h: Math.floor(b.height * imgObj.height) }));
-            }
-            const maskBase64 = await generateMaskBase64(imgBase64, boxes);
-            const cleanedImage = await removeStampWithMask(imgBase64, maskBase64);
-            if (!cleanedImage) throw new Error("AI returned no image");
-            const newPdfBytes = await Edit.replacePageWithImage(file, pageNum - 1, cleanedImage);
-            replaceFile(newPdfBytes, "cleaned.pdf");
-            setIsAIProcessing(false); setStatusMsg("Cleaned Page Replaced ✨"); setMode('cursor');
-        } catch (e) { console.error("Stamp Removal Error", e); setIsAIProcessing(false); setStatusMsg("AI Error: Removal Failed."); }
-    };
 
+
+    // Handlers needed for children
+    // ... (previous code)
+
+    /* --- Editor Handlers --- */
+    // ...
+    // ...
+    
     // Handlers needed for children
     const handleCropApply = async (pageNum: number, rect: { x: number, y: number, w: number, h: number }) => {
         try {
@@ -337,10 +288,11 @@ export const EditorPage: React.FC = () => {
             replaceFile(newBytes, 'cropped.pdf');
             setStatusMsg("Cropped! ✅");
             setMode('cursor');
-        } catch (e) { console.error(e); alert("Crop failed"); }
+        } catch (e) { console.error(e); toast.error("Crop failed", { description: (e as Error).message }); }
     };
 
     const handleModalSubmit = async () => {
+        // ... (implementation to be refactored later, keeping for now) ...
         try {
             if (!file) return;
             let res: Uint8Array | null = null;
@@ -361,50 +313,28 @@ export const EditorPage: React.FC = () => {
                 res = await Convert.htmlToPdf(htmlInput); replaceFile(res, 'web_convert.pdf'); setModal({ type: null, isOpen: false }); return;
             }
             if (res) {
-                if (updateView) { replaceFile(res); setStatusMsg("Applied! 👍"); } else download(res, 'output.pdf');
+                if (updateView) { replaceFile(res); setStatusMsg("Applied! 👍"); toast.success("Changes applied successfully"); } else {
+                   import('@/features/editor/actions/downloadActions').then(m => m.downloadFile(res!, 'output.pdf')); // Dynamic import or just helper
+                }
             }
             setModal({ type: null, isOpen: false });
-        } catch (e) { console.error(e); alert('Error: ' + (e as Error).message); }
+        } catch (e) { console.error(e); toast.error("Action Failed", { description: (e as Error).message }); }
     };
 
-    const handleExport = async (fileName: string, options: ExportOptions) => {
+    const handleExport = async (fileName: string, options: { password?: string, compression?: number }) => {
         try {
-            if (!file) return;
             setIsExportOpen(false); setStatusMsg("Saving... 💾");
-            const blockAnnotations: any[] = [];
-            editableBlocks.filter(b => b.isDirty).forEach(block => {
-                blockAnnotations.push({ id: `wo_${block.id}`, page: block.page, type: 'whiteout', x: block.x, y: block.y, width: block.width, height: block.height });
-                blockAnnotations.push({ id: `txt_${block.id}`, page: block.page, type: 'text', x: block.x, y: block.y, text: block.text, size: block.fontSize, fontFamily: block.fontFamily, color: '#000000' });
-            });
-            const allAnnotations = [...annotations, ...blockAnnotations];
-            let finalBytes = await Edit.saveAnnotations(file, allAnnotations, pageRotations);
-            if (options.password) {
-                const blob = new Blob([Buffer.from(finalBytes)], { type: 'application/pdf' });
-                const tempFile = new File([blob], fileName, { type: 'application/pdf' });
-                finalBytes = await Security.encryptPdf(tempFile, options.password, settings.permissions);
-            }
-            download(finalBytes, fileName);
-        } catch (e) { console.error(e); alert("Export failed: " + (e as Error).message); }
+            const { handleExportAction } = await import('@/features/editor/actions/downloadActions');
+            await handleExportAction(file, fileName, { 
+                fileName, 
+                compressionLevel: options.compression || 80, 
+                password: options.password 
+            }, annotations, editableBlocks, pageRotations, settings.permissions);
+            toast.success("Export successful!");
+        } catch (e) { console.error(e); toast.error("Export Failed", { description: (e as Error).message }); }
     };
 
-    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>, type: 'merge' | 'image' | 'word') => {
-        const f = e.target.files?.[0];
-        if (!f || !file) return;
-        if (type === 'merge') {
-            const res = await Organize.mergePdfs(file, f);
-            replaceFile(res, 'merged.pdf'); setStatusMsg("Merged! 🔗");
-        } else if (type === 'word') {
-            try {
-                setStatusMsg("Converting Word... 📄");
-                const pdfBytes = await Convert.convertImageOrOfficeToPdf(f);
-                replaceFile(pdfBytes, f.name.replace('.docx', '.pdf')); setStatusMsg("Converted! ✅");
-            } catch (e) { alert("Conversion Failed"); }
-        } else {
-            const reader = new FileReader();
-            reader.onload = (ev) => { setPendingImage(ev.target?.result as string); setMode('image'); setStatusMsg("Tap to place image 📍"); };
-            reader.readAsDataURL(f);
-        }
-    };
+
 
     const handleCompareFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
@@ -415,13 +345,13 @@ export const EditorPage: React.FC = () => {
         }
     };
 
-    const download = (data: Blob | Uint8Array, name: string) => {
-        const blob = data instanceof Blob ? data : new Blob([Buffer.from(data as Uint8Array)]);
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a'); link.href = url; link.download = name;
-        document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        setStatusMsg(`Saved ${name} 🎉`); setTimeout(() => setStatusMsg(''), 3000);
-    };
+    // Helper for Text/Ann Updates
+    // ...
+    
+    // ...
+    // Return JSX
+    // ...
+
 
     // Helper for Text/Ann Updates
     const handleAnnotationSelect = (ann: any) => {
@@ -510,6 +440,7 @@ export const EditorPage: React.FC = () => {
                             {mode === 'image' && pendingImage && (
                                 <div className="sticky top-4 z-50 bg-primary text-white text-xs px-4 py-2 rounded-full shadow-lg animate-bounce pointer-events-none mb-4">Tap on document to drop image 📍</div>
                             )}
+                            <Suspense fallback={<div className="flex-1 h-[85vh] flex items-center justify-center"><Loader2 className="w-12 h-12 animate-spin" /></div>}>
 
                             {/* Compare Mode Split View */}
                             {mode === 'compare' && compareFile ? (
@@ -536,19 +467,21 @@ export const EditorPage: React.FC = () => {
                                     activePage={activePage} onPageSelect={setActivePage}
                                     pendingImage={pendingImage} onImagePlaced={() => { setMode('cursor'); setPendingImage(null); }}
                                     drawColor={drawColor} brushSize={brushSize} textStyle={textStyle}
-                                    onStampRemove={handleStampRemove}
+                                    onStampRemove={(p, r) => handleStampRemove(p, r)}
                                     onAnnotationSelect={handleAnnotationSelect}
                                     onCropApply={handleCropApply}
-                                />
-                            )}
+                                    />
+                                )}
+                            </Suspense>
                         </div>
                     </div>
                 </div>
             </div>
 
             <ThinkingSidebar isOpen={isThinkingOpen} onClose={() => setIsThinkingOpen(false)} messages={chatMessages} isThinking={isThinking} onSendMessage={handleChatSendMessage} />
-            <ReorderDialog isOpen={modal.type === 'reorder'} onClose={() => setModal({ type: null, isOpen: false })} pageCount={numPages} onApply={async (order) => { try { setIsAIProcessing(true); const newBytes = await Organize.reorderPages(file!, order); replaceFile(newBytes, 'reordered.pdf'); setStatusMsg("Pages Reordered 📑"); } catch (e) { alert("Reorder Failed"); } finally { setIsAIProcessing(false); setModal({ type: null, isOpen: false }); } }} />
+            <ReorderDialog isOpen={modal.type === 'reorder'} onClose={() => setModal({ type: null, isOpen: false })} pageCount={numPages} onApply={async (order) => { try { setIsBusy(true); const newBytes = await Organize.reorderPages(file!, order); replaceFile(newBytes, 'reordered.pdf'); setStatusMsg("Pages Reordered 📑"); toast.success("Pages reordered"); } catch (e) { toast.error("Reorder Failed"); } finally { setIsBusy(false); setModal({ type: null, isOpen: false }); } }} />
             <ExportDialog isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} onExport={handleExport} defaultFileName={file?.name.replace('.pdf', '') || 'doc'} />
+
             <SettingsDialog isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
             {modal.isOpen && modal.type !== 'reorder' && (

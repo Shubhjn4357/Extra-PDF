@@ -1,7 +1,7 @@
-import '../utils/polyfill';
+
 import type { Metadata } from 'next';
+import { Toaster } from 'sonner';
 import './globals.css';
-import '../utils/polyfill';
 
 export const metadata: Metadata = {
     title: 'Extra PDF',
@@ -15,7 +15,10 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en" suppressHydrationWarning>
-            <body className="font-sans antialiased">{children}</body>
+            <body className="font-sans antialiased">
+                {children}
+                <Toaster richColors position="top-right" />
+            </body>
         </html>
     );
 }

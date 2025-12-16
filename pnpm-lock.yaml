@@ -9,98 +9,101 @@ importers:
   .:
     dependencies:
       '@google/genai':
-        specifier: latest
+        specifier: 1.33.0
         version: 1.33.0
       buffer:
-        specifier: ^6.0.3
+        specifier: 6.0.3
         version: 6.0.3
       docx:
-        specifier: latest
+        specifier: 9.5.1
         version: 9.5.1
       encoding:
-        specifier: ^0.1.13
+        specifier: 0.1.13
         version: 0.1.13
       html2canvas:
-        specifier: latest
+        specifier: 1.4.1
         version: 1.4.1
       immutability-helper:
-        specifier: latest
+        specifier: 3.1.1
         version: 3.1.1
       jspdf:
-        specifier: latest
+        specifier: 3.0.4
         version: 3.0.4
       lucide-react:
-        specifier: latest
+        specifier: 0.561.0
         version: 0.561.0(react@19.2.3)
       mammoth:
-        specifier: latest
+        specifier: 1.11.0
         version: 1.11.0
       next:
-        specifier: latest
+        specifier: 16.0.10
         version: 16.0.10(@babel/core@7.28.5)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       pdf-lib:
-        specifier: latest
+        specifier: 1.17.1
         version: 1.17.1
       pdfjs-dist:
         specifier: 5.4.449
         version: 5.4.449
       pptxgenjs:
-        specifier: latest
+        specifier: 4.0.1
         version: 4.0.1
       react:
-        specifier: latest
+        specifier: 19.2.3
         version: 19.2.3
       react-dnd:
-        specifier: latest
+        specifier: 16.0.1
         version: 16.0.1(@types/node@25.0.1)(@types/react@19.2.7)(react@19.2.3)
       react-dnd-html5-backend:
-        specifier: latest
+        specifier: 16.0.1
         version: 16.0.1
       react-dnd-touch-backend:
-        specifier: latest
+        specifier: 16.0.1
         version: 16.0.1
       react-dom:
-        specifier: latest
+        specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
       react-pdf:
-        specifier: latest
+        specifier: 10.2.0
         version: 10.2.0(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      sonner:
+        specifier: ^2.0.7
+        version: 2.0.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       tesseract.js:
-        specifier: latest
+        specifier: 6.0.1
         version: 6.0.1(encoding@0.1.13)
       xlsx:
-        specifier: latest
+        specifier: 0.18.5
         version: 0.18.5
       zustand:
-        specifier: latest
+        specifier: 5.0.9
         version: 5.0.9(@types/react@19.2.7)(react@19.2.3)
     devDependencies:
       '@types/node':
-        specifier: latest
+        specifier: 25.0.1
         version: 25.0.1
       '@types/react':
-        specifier: latest
+        specifier: 19.2.7
         version: 19.2.7
       '@types/react-dom':
-        specifier: latest
+        specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.7)
       autoprefixer:
-        specifier: ^10.4.22
+        specifier: 10.4.22
         version: 10.4.22(postcss@8.5.6)
       eslint:
-        specifier: ^9
+        specifier: 9.39.2
         version: 9.39.2(jiti@1.21.7)
       eslint-config-next:
-        specifier: latest
+        specifier: 16.0.10
         version: 16.0.10(@typescript-eslint/parser@8.49.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)
       postcss:
-        specifier: ^8
+        specifier: 8.5.6
         version: 8.5.6
       tailwindcss:
-        specifier: ^3.4.1
+        specifier: 3.4.19
         version: 3.4.19
       typescript:
-        specifier: latest
+        specifier: 5.9.3
         version: 5.9.3
 
 packages:
@@ -2284,6 +2287,12 @@ packages:
   signal-exit@4.1.0:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
+
+  sonner@2.0.7:
+    resolution: {integrity: sha512-W6ZN4p58k8aDKA4XPcx2hpIQXBRAgyiWVkYhT7CvK6D3iAu7xjvVyhQHg2/iaKJZ1XVJ4r7XuwGL+WGEK37i9w==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
+      react-dom: ^18.0.0 || ^19.0.0 || ^19.0.0-rc
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -5011,6 +5020,11 @@ snapshots:
       side-channel-weakmap: 1.0.2
 
   signal-exit@4.1.0: {}
+
+  sonner@2.0.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    dependencies:
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
 
   source-map-js@1.2.1: {}
 

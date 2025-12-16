@@ -31,7 +31,6 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$utils$2f$polyfill$2e$
 ;
 ;
 ;
-;
 const metadata = {
     title: 'Extra PDF',
     description: 'Advanced PDF Editor'
@@ -45,12 +44,12 @@ function RootLayout({ children }) {
             children: children
         }, void 0, false, {
             fileName: "[project]/src/app/layout.tsx",
-            lineNumber: 18,
+            lineNumber: 17,
             columnNumber: 13
         }, this)
     }, void 0, false, {
         fileName: "[project]/src/app/layout.tsx",
-        lineNumber: 17,
+        lineNumber: 16,
         columnNumber: 9
     }, this);
 }

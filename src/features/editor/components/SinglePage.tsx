@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDrop } from 'react-dnd';
-import { Page, pdfjs } from 'react-pdf';
-if (typeof window !== 'undefined') pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+import { Page } from 'react-pdf';
 import { ScanText, Maximize2 } from 'lucide-react';
 import { TextBlock } from './TextBlock';
 
@@ -35,6 +34,7 @@ interface SinglePageProps {
     onBlockUpdate: (id: string, text: string, x: number, y: number) => void;
     onBlockDelete: (id: string) => void;
     scanPage: (pageNum: number) => Promise<void>;
+    onEditAnnotation: (id: string) => void;
 }
 
 const SinglePage = React.memo(({
@@ -42,7 +42,7 @@ const SinglePage = React.memo(({
     onMouseDown, onAnnotationMouseDown, onContextMenu, onPageSelect,
     selectedId, editingId, currentRect, currentPath, dragStart, drawColor, brushSize, textStyle,
     removeAnnotation, updateAnnotation, getFontFamily, isActive,
-    onBlockUpdate, onBlockDelete, scanPage
+    onBlockUpdate, onBlockDelete, scanPage, onEditAnnotation
 }: SinglePageProps) => {
     const [dimensions, setDimensions] = useState({ width: 595, height: 842 });
 
@@ -91,6 +91,38 @@ const SinglePage = React.memo(({
         }
     }, [mode, isActive, pageNum]);
 
+    // Long Press Logic
+    const longPressTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const isLongPress = React.useRef(false);
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        isLongPress.current = false;
+        const touch = e.touches[0];
+        const { clientX, clientY } = touch;
+
+        longPressTimer.current = setTimeout(() => {
+            isLongPress.current = true;
+            onContextMenu({ clientX, clientY, preventDefault: () => { }, stopPropagation: () => { } }, null, 'canvas');
+        }, 500); // 500ms long press
+
+        onMouseDown(e, pageNum);
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+        if (isLongPress.current) {
+            e.preventDefault(); // Prevent click after long press
+        }
+        onMouseDown(e, pageNum); // Pass through
+    };
+
+    const handleTouchMove = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
+
     return (
         <div
             id={`page-wrapper-${pageNum}`}
@@ -98,7 +130,9 @@ const SinglePage = React.memo(({
         ${isActive ? 'border-primary shadow-2xl ring-4 ring-primary/10' : 'border-transparent shadow-xl hover:shadow-2xl'}`}
             style={containerStyle}
             onMouseDown={(e) => onMouseDown(e, pageNum)}
-            onTouchStart={(e) => onMouseDown(e, pageNum)}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchMove}
             onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e, null, 'canvas'); }}
         >
             <div style={{ width: '100%', height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
@@ -143,7 +177,9 @@ const SinglePage = React.memo(({
                             cursor: mode === 'draw' || mode === 'sign' ? 'crosshair' : mode === 'crop' || mode === 'stamp_remover' ? 'cell' : mode === 'text' ? 'text' : mode === 'cursor' ? 'default' : 'pointer'
                         }}
                         onMouseDown={(e) => onMouseDown(e, pageNum)}
-                        onTouchStart={(e) => onMouseDown(e, pageNum)}
+                        onTouchStart={handleTouchStart}
+                        onTouchEnd={handleTouchEnd}
+                        onTouchMove={handleTouchMove}
                         onContextMenu={(e) => e.stopPropagation()}
                     >
                         {/* SVG Layer for Drawings */}
@@ -168,7 +204,7 @@ const SinglePage = React.memo(({
                         </svg>
 
                         {/* HTML Layer for Elements */}
-                        {annotations.filter((a: any) => a.page === pageNum && a.type !== 'drawing' && a.type !== 'signature').map((ann: any) => {
+                        {annotations.filter((a: any) => a.page === pageNum && a.type !== 'drawing' && a.type !== 'signature').map((ann:any) => {
                             const isSelected = selectedId === ann.id;
                             return (
                                 <div
@@ -190,6 +226,11 @@ const SinglePage = React.memo(({
                                     onContextMenu={(e) => {
                                         e.preventDefault(); e.stopPropagation();
                                         onContextMenu(e, ann.id, ann.type);
+                                    }}
+                                    onDoubleClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (ann.type === 'text') onEditAnnotation(ann.id);
                                     }}
                                 >
                                     {isSelected && mode === 'cursor' && (

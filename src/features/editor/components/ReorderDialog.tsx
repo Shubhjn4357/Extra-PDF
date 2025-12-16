@@ -5,7 +5,7 @@ import { X, GripVertical } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useFileStore } from '@/store/useFileStore';
 
-if (typeof window !== 'undefined') pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Worker initialized globally
 
 interface ReorderDialogProps {
     isOpen: boolean;

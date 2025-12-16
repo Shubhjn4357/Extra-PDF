@@ -16,6 +16,7 @@ export interface Tool {
   icon: LucideIcon;
   category: ToolCategory;
   requiresModal?: boolean; 
+  shortcut?: string;
 }
 
 export interface ChatMessage {

@@ -1,9 +1,10 @@
-import { GoogleGenAI, Chat, GenerateContentResponse, FunctionDeclaration, Type } from "@google/genai";
+import { GoogleGenAI, Chat, GenerateContentResponse, FunctionDeclaration, Type, FunctionCall } from "@google/genai";
+import { toast } from "sonner";
 import { ChatMessage } from "../types";
 
 // Initialize the Gemini client
 const getClient = () => {
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
         console.error("API Key not found. Gemini features will fail.");
     }
@@ -111,7 +112,7 @@ export const streamResponse = async (
     chat: Chat,
     message: string,
     onChunk: (text: string) => void,
-    onToolCall?: (toolCall: any) => Promise<any>
+    onToolCall?: (toolCall: FunctionCall) => Promise<any>
 ): Promise<void> => {
     try {
         const result = await chat.sendMessageStream({ message });
@@ -125,10 +126,12 @@ export const streamResponse = async (
                 onChunk(c.text);
             }
 
-            const functionCalls = c.candidates?.[0]?.content?.parts?.filter(p => p.functionCall).map(p => p.functionCall);
+            const functionCalls = c.candidates?.[0]?.content?.parts?.filter((p: any) => p.functionCall).map((p: any) => p.functionCall as FunctionCall);
 
             if (functionCalls && functionCalls.length > 0 && onToolCall) {
                 for (const fc of functionCalls) {
+                    if (!fc || !fc.name) continue; // Safety check
+
                     // Notify UI of tool usage via text stream
                     // onChunk(`\n(Executing ${fc.name.replace(/_/g, ' ')}...)\n`);
 
@@ -138,7 +141,7 @@ export const streamResponse = async (
                     const toolResponse = await chat.sendMessageStream({
                         message: [{
                             functionResponse: {
-                                name: fc?.name,
+                                name: fc.name,
                                 response: { result: toolResult }
                             }
                         }]
@@ -154,15 +157,23 @@ export const streamResponse = async (
         }
     } catch (error) {
         console.error("Gemini Stream Error:", error);
+        toast.error("AI Error", { description: "Could not generate response. Please check your connection." });
         onChunk("\nError: Could not complete request. Please try again.");
     }
 };
+
+interface DetectedBox {
+    ymin: number;
+    xmin: number;
+    ymax: number;
+    xmax: number;
+}
 
 export const detectStamps = async (base64Image: string): Promise<Array<{ x: number, y: number, width: number, height: number }>> => {
     const ai = getClient();
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-1.5-flash',
             contents: {
                 parts: [
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image.split(',')[1] } },
@@ -182,10 +193,10 @@ export const detectStamps = async (base64Image: string): Promise<Array<{ x: numb
         });
 
         const text = response.text || "[]";
-        const boxes = JSON.parse(text);
+        const boxes = JSON.parse(text) as DetectedBox[];
         if (!Array.isArray(boxes)) return [];
 
-        return boxes.map((b: any) => ({
+        return boxes.map((b: DetectedBox) => ({
             x: b.xmin / 1000,
             y: b.ymin / 1000,
             width: (b.xmax - b.xmin) / 1000,
@@ -194,6 +205,7 @@ export const detectStamps = async (base64Image: string): Promise<Array<{ x: numb
 
     } catch (e) {
         console.error("Gemini Vision Error:", e);
+        toast.error("Vision Error", { description: "Failed to detect stamps." });
         return [];
     }
 };
@@ -219,12 +231,11 @@ export const removeStampWithMask = async (imageBase64: string, maskBase64: strin
     const ai = getClient();
     try {
         const response = await ai.models.generateContent({
-            // Using 2.5 Flash for vision tasks or Pro if higher quality needed.
-            // Note: Standard 'generateContent' with mask implies an editing task.
-            model: 'gemini-2.5-flash',
+            // using gemini-2.0-flash-exp for experimental vision editing capabilities
+            model: 'gemini-2.0-flash-exp',
             contents: {
                 parts: [
-                    { text: "Remove the object covered by the white mask. Restore the background naturally to match the document paper." },
+                    { text: "Remove the object covered by the white mask. Restore the background naturally to match the document paper. Return the result as a PNG image." },
                     { inlineData: { mimeType: 'image/png', data: imageBase64.split(',')[1] } },
                     { inlineData: { mimeType: 'image/png', data: maskBase64.split(',')[1] } }
                 ]
@@ -238,10 +249,35 @@ export const removeStampWithMask = async (imageBase64: string, maskBase64: strin
                     return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                 }
             }
+            // If we got here, no image was found. Log the text to see what happened.
+            console.warn("Gemini Inpainting Response (No Image):", response.candidates[0].content.parts.map((p: any) => p.text).join(' '));
         }
         return null;
     } catch (e) {
         console.error("Gemini Inpainting Error:", e);
-        throw e;
+        toast.error("Inpainting Error", { description: "Failed to remove object from image." });
+        // Do not throw here, return null so caller handles it
+        return null;
+    }
+};
+
+// NEW: Generate PDF Content from Prompt via API
+export const generatePDFContent = async (userPrompt: string): Promise<string> => {
+    try {
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: userPrompt })
+        });
+
+        if (!response.ok) {
+            throw new Error(`API Error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.html;
+    } catch (e) {
+        console.error("Gemini PDF Gen Error:", e);
+        throw new Error("Failed to generate document content.");
     }
 };
