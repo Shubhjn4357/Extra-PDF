@@ -1,5 +1,20 @@
 "use client";
 
+/**
+ * EditorSidebar Component
+ * 
+ * Expandable left sidebar providing access to all PDF editing tools.
+ * Features:
+ * - Category tabs (Edit, Organize, Security, Convert)
+ * - Tool buttons with icons, descriptions, and keyboard shortcuts
+ * - Hover expansion for detailed tool info
+ * - Keyboard shortcuts help panel
+ * 
+ * Exports `toolsList` array containing all available editor tools with metadata.
+ * 
+ * @module features/editor/components/EditorSidebar
+ */
+
 import React, { useState } from 'react';
 import { Tool, ToolCategory } from '@/types';
 import {

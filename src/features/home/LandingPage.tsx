@@ -1,26 +1,48 @@
 "use client";
 
+/**
+ * LandingPage Component
+ * 
+ * The main entry point for ExtraPDF application. Provides:
+ * - Drag-and-drop file upload for PDFs and images
+ * - Password dialog for encrypted PDFs
+ * - Image-to-PDF conversion for multiple images
+ * - AI-powered document generation via Gemini API
+ * 
+ * @module features/home/LandingPage
+ */
+
 import React, { useRef, useState } from 'react';
-import { AIInput } from '@/components/ui/AIInput';
-import { useFileStore } from '@/store/useFileStore';
-import { SettingsDialog } from '@/components/ui/SettingsDialog';
-import { FileText, Settings, Upload, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import * as Convert from '@/services/tools/convertTools';
 
-
+// UI Components
+import { AIInput } from '@/components/ui/AIInput';
+import { SettingsDialog } from '@/components/ui/SettingsDialog';
 import { PasswordDialog } from '@/components/ui/PasswordDialog';
+
+// Icons
+import { FileText, Settings, Upload, Image as ImageIcon, Sparkles } from 'lucide-react';
+
+// State & Services
+import { useFileStore } from '@/store/useFileStore';
+import * as Convert from '@/services/tools/convertTools';
 import { checkEncryption, decryptPdf } from '@/services/tools/securityTools';
 
+/**
+ * LandingPage - Main homepage component for ExtraPDF
+ * Handles file uploads, encryption detection, and AI document generation
+ */
 export const LandingPage: React.FC = () => {
     const router = useRouter();
     const { setFile } = useFileStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // UI State
     const [isDragOver, setIsDragOver] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Encryption State
+    // Encryption dialog state for password-protected PDFs
     const [passwordDialog, setPasswordDialog] = useState<{ isOpen: boolean, file: File | null }>({ isOpen: false, file: null });
 
     const processFiles = async (fileList: FileList | null) => {
@@ -79,9 +101,10 @@ export const LandingPage: React.FC = () => {
         if (!passwordDialog.file) return;
 
         try {
-            // Decrypt and set file
+            // Decrypt and set file - create new Uint8Array to ensure standard ArrayBuffer
             const decryptedFileBytes = await decryptPdf(passwordDialog.file, password);
-            const decryptedFile = new File([decryptedFileBytes], passwordDialog.file.name, { type: 'application/pdf' });
+            const blob = new Blob([new Uint8Array(decryptedFileBytes)], { type: 'application/pdf' });
+            const decryptedFile = new File([blob], passwordDialog.file.name, { type: 'application/pdf' });
             setFile(decryptedFile);
 
             // Persist state immediately

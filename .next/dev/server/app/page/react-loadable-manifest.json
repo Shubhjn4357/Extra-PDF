@@ -2,9 +2,9 @@
   "[project]/src/features/home/LandingPage.tsx [app-client] (ecmascript, next/dynamic entry)": {
     "id": "[project]/src/features/home/LandingPage.tsx [app-client] (ecmascript, next/dynamic entry)",
     "files": [
-      "static/chunks/_592603ba._.js",
-      "static/chunks/src_b0e7f222._.js",
-      "static/chunks/e474c_next_764946f9._.js",
+      "static/chunks/_ddf69292._.js",
+      "static/chunks/src_149e3605._.js",
+      "static/chunks/e474c_next_f7ca3080._.js",
       "static/chunks/d5a52_docx_dist_index_mjs_c9f545ca._.js",
       "static/chunks/6726b_pdf-lib_es_core_ca8b70bb._.js",
       "static/chunks/6726b_pdf-lib_es_api_84d04656._.js",
@@ -20,22 +20,22 @@
       "static/chunks/37559_dingbat-to-unicode_dist_5e7a745c._.js",
       "static/chunks/5013f_html2canvas_dist_html2canvas_2bd6da66.js",
       "static/chunks/9684b_jspdf_dist_jspdf_es_min_b95e39c5.js",
-      "static/chunks/node_modules__pnpm_643d201d._.js",
-      "static/chunks/src_features_home_LandingPage_tsx_acd9c642._.js",
+      "static/chunks/node_modules__pnpm_188f3f2b._.js",
+      "static/chunks/src_features_home_LandingPage_tsx_55915605._.js",
       "static/chunks/4766b_dompurify_dist_purify_es_mjs_77e0d7a4._.js",
-      "static/chunks/4766b_dompurify_dist_purify_es_mjs_7a8b6376._.js",
+      "static/chunks/4766b_dompurify_dist_purify_es_mjs_5ff52437._.js",
       "static/chunks/node_modules__pnpm_87866224._.js",
-      "static/chunks/2617c_canvg_lib_index_es_7a8b6376.js",
+      "static/chunks/2617c_canvg_lib_index_es_5ff52437.js",
       "static/chunks/node_modules__pnpm_175572f5._.js",
-      "static/chunks/49fe0_react-pdf_dist_index_4c7d81c2.js",
-      "static/chunks/e474c_next_dist_compiled_https-browserify_index_02d4c79a.js",
+      "static/chunks/49fe0_react-pdf_dist_index_910fb181.js",
+      "static/chunks/e474c_next_dist_compiled_https-browserify_index_3a9433f8.js",
       "static/chunks/cb653_pptxgenjs_dist_pptxgen_es_1d0c284f.js",
-      "static/chunks/cb653_pptxgenjs_dist_pptxgen_es_7a8b6376.js",
+      "static/chunks/cb653_pptxgenjs_dist_pptxgen_es_5ff52437.js",
       "static/chunks/e474c_next_dist_compiled_fc141de6._.js",
-      "static/chunks/e474c_next_dist_compiled_https-browserify_index_2abea824.js",
+      "static/chunks/e474c_next_dist_compiled_https-browserify_index_0ca3c2fd.js",
       "static/chunks/433a6_@google_genai_dist_web_index_mjs_5f19125e._.js",
       "static/chunks/src_services_geminiService_ts_c0575518._.js",
-      "static/chunks/src_services_geminiService_ts_7a8b6376._.js"
+      "static/chunks/src_services_geminiService_ts_5ff52437._.js"
     ]
   }
 }

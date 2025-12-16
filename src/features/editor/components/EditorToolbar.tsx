@@ -1,12 +1,27 @@
 "use client";
 
+/**
+ * EditorToolbar Component
+ * 
+ * Top toolbar for the PDF editor providing:
+ * - Context-sensitive tool options (text formatting, brush settings)
+ * - Zoom controls (rendered as floating bottom-right panel)
+ * - Undo/Redo buttons
+ * - Status messages display
+ * - AI and Export action buttons
+ * 
+ * Appears differently based on active editor mode (text, draw, etc.)
+ * 
+ * @module features/editor/components/EditorToolbar
+ */
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { EditorMode } from '@/types';
 import {
     Download, CheckCircle2, Eraser,
-    Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
-    Wand2, Sparkles, ScanText, Undo, Redo, ZoomIn, ZoomOut, Minus, Plus
+    Bold, Italic, Underline,
+    Wand2, Sparkles, ScanText, Undo, Redo, Minus, Plus
 } from 'lucide-react';
 
 interface ToolbarProps {

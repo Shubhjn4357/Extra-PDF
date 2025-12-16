@@ -1,35 +1,58 @@
 "use client";
 
+/**
+ * EditorPage Component
+ * 
+ * The main PDF editing workspace providing:
+ * - Multi-mode editing (cursor, text, draw, crop, redact, etc.)
+ * - Tool categories: Edit, Organize, Security, Convert
+ * - AI-powered features via Gemini (stamp removal, chat)
+ * - Page thumbnails, zoom controls, and keyboard shortcuts
+ * - Export with compression and password protection
+ * 
+ * @module features/editor/EditorPage
+ */
+
 import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { toast } from "sonner";
+
+// State Management
 import { useFileStore } from '@/store/useFileStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+
+// UI Components
 import { EditorSidebar } from './components/EditorSidebar';
 import { ThumbnailSidebar } from './components/ThumbnailSidebar';
 import { EditorToolbar } from './components/EditorToolbar';
 import { ReorderDialog } from './components/ReorderDialog';
 import { ThinkingSidebar } from './ThinkingSidebar';
-import { ExportDialog, ExportOptions } from '@/components/ui/ExportDialog';
+import { ExportDialog } from '@/components/ui/ExportDialog';
 import { SettingsDialog } from '@/components/ui/SettingsDialog';
-import { EditorMode, Tool, ToolCategory, ModalState, ChatMessage } from '@/types';
-import { Menu, Settings2, Scissors, Stamp, Lock, Loader2, ChevronLeft } from 'lucide-react';
-import { createChatSession, streamResponse } from '@/services/geminiService';
-import { buildFinalPrompt, generateMaskBase64 } from '@/services/editorHelpers';
 
-// Import Modular Tools
+// Types
+import { EditorMode, Tool, ToolCategory, ModalState } from '@/types';
+
+// Icons
+import { Menu, Settings2, Scissors, Stamp, Lock, Loader2, ChevronLeft } from 'lucide-react';
+
+// Tool Services (PDF manipulation)
 import * as Organize from '@/services/tools/organizeTools';
 import * as Edit from '@/services/tools/editTools';
 import * as Security from '@/services/tools/securityTools';
 import * as Convert from '@/services/tools/convertTools';
-import * as Optimize from '@/services/tools/optimizeTools';
-import { detectStamps, removeStampWithMask } from '@/services/geminiService';
-import dynamic from 'next/dynamic';
+
+// Action Hooks
 import { useAIActions } from './actions/aiActions';
 import { useDocumentActions } from './actions/documentActions';
 import { useSecurityActions } from './actions/securityActions';
 
-const PDFCanvas = dynamic(() => import('./PDFCanvas').then(m => m.PDFCanvas), { ssr: false, loading: () => <div>Drawing The Canvas...</div> });
+// Dynamic import for PDFCanvas to avoid SSR issues with pdf.js
+const PDFCanvas = dynamic(() => import('./PDFCanvas').then(m => m.PDFCanvas), {
+    ssr: false,
+    loading: () => <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin" /></div>
+});
 export const EditorPage: React.FC = () => {
     const router = useRouter();
     const { file, replaceFile, addAnnotation, annotations, updateAnnotation, rotatePage, pdfText, numPages, pageRotations, removeAnnotation, editableBlocks, isRestoring, undo, redo } = useFileStore();
@@ -269,17 +292,9 @@ export const EditorPage: React.FC = () => {
         if (window.innerWidth < 768) setSidebarOpen(false);
     };
 
-
-
-
-    // Handlers needed for children
-    // ... (previous code)
-
-    /* --- Editor Handlers --- */
-    // ...
-    // ...
-    
-    // Handlers needed for children
+    /**
+     * Applies crop operation to a specific page
+     */
     const handleCropApply = async (pageNum: number, rect: { x: number, y: number, w: number, h: number }) => {
         try {
             if (!file) return;
